@@ -15,8 +15,23 @@ from dataclasses import asdict
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+import numpy as np
 from agriergo.analytics.parameter_aggregator import WorkerReport
 from agriergo.perception.video_processor import VideoMetadata
+
+
+class NumpyEncoder(json.JSONEncoder):
+    """Custom JSON encoder to convert numpy types (bool_, int64, float64, ndarray) to Python types."""
+    def default(self, obj):
+        if isinstance(obj, (np.bool_, bool)):
+            return bool(obj)
+        if isinstance(obj, (np.integer, int)):
+            return int(obj)
+        if isinstance(obj, (np.floating, float)):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
 
 
 class ReportGenerator:
@@ -200,9 +215,10 @@ class ReportGenerator:
         if output_path:
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(report, f, indent=2, ensure_ascii=False)
+                json.dump(report, f, indent=2, ensure_ascii=False, cls=NumpyEncoder)
 
-        return report
+        # Convert report to JSON-serializable python dict using NumpyEncoder
+        return json.loads(json.dumps(report, cls=NumpyEncoder))
 
     def generate_csv(
         self,
