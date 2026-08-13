@@ -209,7 +209,7 @@ if "pipeline_result" in st.session_state:
         
         param_data = [
             {"#": 1, "Parameter": "Sitting Duration", "Extracted Value": f"{report.sitting_duration}s ({round(report.sitting_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
-            {"#": "1b", "Parameter": "Squatting Duration", "Extracted Value": f"{report.squatting_duration}s ({round(report.squatting_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
+            {"#": "1b", "Parameter": "Squatting Duration", "Extracted Value": f"{getattr(report, 'squatting_duration', 0.0)}s ({round(getattr(report, 'squatting_duration', 0.0)/max(1, report.total_tracked_time)*100, 1)}%)"},
             {"#": 2, "Parameter": "Standing Duration", "Extracted Value": f"{report.standing_duration}s ({round(report.standing_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
             {"#": 3, "Parameter": "Bending Duration", "Extracted Value": f"{report.bending_duration}s ({round(report.bending_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
             {"#": 4, "Parameter": "Walking Duration", "Extracted Value": f"{report.walking_duration}s ({round(report.walking_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
