@@ -1,0 +1,277 @@
+"""
+Parameter Aggregator — Computes all 11 output parameters per worker.
+
+Takes per-frame data (posture labels, joint angles, detected objects,
+trajectories) and aggregates them into the 11 structured parameters
+defined in the project requirements.
+"""
+
+import numpy as np
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Any
+from pathlib import Path
+
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+from agriergo.interpretation.posture_classifier import PostureLabel
+from agriergo.interpretation.activity_segmenter import ActivityBout
+from agriergo.interpretation.repetition_detector import RepetitionResult
+from agriergo.interpretation.trip_counter import TripCountResult
+
+
+@dataclass
+class LoadInstance:
+    """A detected instance of load carrying."""
+    timestamp: float
+    object_class: str
+    weight_kg: Optional[float] = None   # Manual input — cannot derive from video
+    duration: Optional[float] = None
+
+
+@dataclass
+class ToolUsageRecord:
+    """A period when a specific tool/equipment was detected near a worker."""
+    tool_name: str
+    first_seen: float
+    last_seen: float
+    duration: float
+    detection_count: int
+
+
+@dataclass
+class PostureSummary:
+    """Summary of posture data for reporting."""
+    dominant_posture: PostureLabel
+    posture_distribution: Dict[str, float]   # label → percentage
+    avg_trunk_flexion: Optional[float]
+    max_trunk_flexion: Optional[float]
+    avg_hip_angle: Optional[float]
+
+
+@dataclass
+class WorkerReport:
+    """
+    Complete report for a single worker containing all 11 parameters.
+
+    Parameters map to the project requirements:
+    1. sitting_duration
+    2. standing_duration
+    3. bending_duration
+    4. walking_duration
+    5. load_instances
+    6. repetitive_movement
+    7. trip_count_result
+    8. tools_used
+    9. posture_summary
+    10. continuous_work_duration
+    11. rest_summary
+    """
+    worker_id: int
+    total_tracked_time: float           # Total time worker was tracked (seconds)
+
+    # Parameter 1: Sitting duration (seconds)
+    sitting_duration: float = 0.0
+
+    # Parameter 2: Standing duration (seconds)
+    standing_duration: float = 0.0
+
+    # Parameter 3: Bending duration (seconds)
+    bending_duration: float = 0.0
+
+    # Parameter 4: Walking duration (seconds)
+    walking_duration: float = 0.0
+
+    # Parameter 5: Load carried
+    load_instances: List[LoadInstance] = field(default_factory=list)
+    total_load_events: int = 0
+
+    # Parameter 6: Repetitive movement frequency
+    repetitive_movement: Optional[RepetitionResult] = None
+
+    # Parameter 7: Number of trips
+    trip_count_result: Optional[TripCountResult] = None
+
+    # Parameter 8: Tools/equipment used
+    tools_used: List[ToolUsageRecord] = field(default_factory=list)
+
+    # Parameter 9: Posture summary
+    posture_summary: Optional[PostureSummary] = None
+
+    # Parameter 10: Continuous work duration
+    longest_work_bout: float = 0.0     # Seconds
+    avg_work_bout: float = 0.0         # Seconds
+    work_bouts: List[ActivityBout] = field(default_factory=list)
+
+    # Parameter 11: Rest duration
+    total_rest_duration: float = 0.0    # Seconds
+    rest_count: int = 0
+    avg_rest_duration: float = 0.0      # Seconds
+    rest_bouts: List[ActivityBout] = field(default_factory=list)
+
+    # Activity timeline
+    activity_bouts: List[ActivityBout] = field(default_factory=list)
+
+    # REBA score (computed separately)
+    reba_score: Optional[float] = None
+    reba_risk_level: Optional[str] = None
+
+
+class ParameterAggregator:
+    """
+    Aggregates per-frame data into the 11 output parameters for each worker.
+    """
+
+    def aggregate(
+        self,
+        worker_id: int,
+        activity_bouts: List[ActivityBout],
+        repetition_result: Optional[RepetitionResult],
+        trip_result: Optional[TripCountResult],
+        tool_detections: Dict[str, List[float]],   # tool_name → list of timestamps
+        load_detections: List[Dict[str, Any]],      # [{timestamp, object_class}, ...]
+        trunk_flexions: List[Optional[float]],
+        hip_angles: List[Optional[float]],
+    ) -> WorkerReport:
+        """
+        Aggregate all data sources into a WorkerReport.
+
+        Args:
+            worker_id: Worker identifier.
+            activity_bouts: Segmented activity bouts.
+            repetition_result: Repetitive motion analysis result.
+            trip_result: Trip counting result.
+            tool_detections: Tool name → list of detection timestamps.
+            load_detections: List of load detection events.
+            trunk_flexions: Per-frame trunk flexion values.
+            hip_angles: Per-frame hip angle values.
+
+        Returns:
+            Complete WorkerReport with all 11 parameters.
+        """
+        report = WorkerReport(worker_id=worker_id, total_tracked_time=0.0)
+
+        # Calculate total tracked time
+        if activity_bouts:
+            report.total_tracked_time = round(
+                activity_bouts[-1].end_time - activity_bouts[0].start_time, 2
+            )
+
+        # ── Parameters 1-4: Posture durations ──
+        report.activity_bouts = activity_bouts
+        for bout in activity_bouts:
+            if bout.activity == PostureLabel.SITTING:
+                report.sitting_duration += bout.duration
+            elif bout.activity == PostureLabel.STANDING and not bout.is_rest:
+                report.standing_duration += bout.duration
+            elif bout.activity == PostureLabel.BENDING:
+                report.bending_duration += bout.duration
+            elif bout.activity == PostureLabel.WALKING:
+                report.walking_duration += bout.duration
+
+        report.sitting_duration = round(report.sitting_duration, 2)
+        report.standing_duration = round(report.standing_duration, 2)
+        report.bending_duration = round(report.bending_duration, 2)
+        report.walking_duration = round(report.walking_duration, 2)
+
+        # ── Parameter 5: Load carried ──
+        for det in load_detections:
+            report.load_instances.append(LoadInstance(
+                timestamp=det.get("timestamp", 0.0),
+                object_class=det.get("object_class", "unknown"),
+                weight_kg=det.get("weight_kg"),
+            ))
+        report.total_load_events = len(report.load_instances)
+
+        # ── Parameter 6: Repetitive movement ──
+        report.repetitive_movement = repetition_result
+
+        # ── Parameter 7: Trips ──
+        report.trip_count_result = trip_result
+
+        # ── Parameter 8: Tools/equipment used ──
+        report.tools_used = self._aggregate_tool_usage(tool_detections)
+
+        # ── Parameter 9: Posture summary ──
+        report.posture_summary = self._compute_posture_summary(
+            activity_bouts, trunk_flexions, hip_angles
+        )
+
+        # ── Parameters 10 & 11: Work and rest durations ──
+        work_bouts = [b for b in activity_bouts if not b.is_rest]
+        rest_bouts = [b for b in activity_bouts if b.is_rest]
+
+        report.work_bouts = work_bouts
+        report.rest_bouts = rest_bouts
+
+        if work_bouts:
+            work_durations = [b.duration for b in work_bouts]
+            report.longest_work_bout = round(max(work_durations), 2)
+            report.avg_work_bout = round(np.mean(work_durations), 2)
+
+        if rest_bouts:
+            rest_durations = [b.duration for b in rest_bouts]
+            report.total_rest_duration = round(sum(rest_durations), 2)
+            report.rest_count = len(rest_bouts)
+            report.avg_rest_duration = round(np.mean(rest_durations), 2)
+
+        return report
+
+    def _aggregate_tool_usage(
+        self, tool_detections: Dict[str, List[float]]
+    ) -> List[ToolUsageRecord]:
+        """Aggregate tool detection timestamps into usage records."""
+        records = []
+        for tool_name, timestamps in tool_detections.items():
+            if not timestamps:
+                continue
+            timestamps.sort()
+            records.append(ToolUsageRecord(
+                tool_name=tool_name,
+                first_seen=round(timestamps[0], 2),
+                last_seen=round(timestamps[-1], 2),
+                duration=round(timestamps[-1] - timestamps[0], 2),
+                detection_count=len(timestamps),
+            ))
+        return records
+
+    def _compute_posture_summary(
+        self,
+        bouts: List[ActivityBout],
+        trunk_flexions: List[Optional[float]],
+        hip_angles: List[Optional[float]],
+    ) -> PostureSummary:
+        """Compute posture distribution and statistics."""
+        # Duration per posture
+        posture_durations: Dict[str, float] = {}
+        total_duration = 0.0
+        for bout in bouts:
+            label = bout.activity.value
+            posture_durations[label] = posture_durations.get(label, 0.0) + bout.duration
+            total_duration += bout.duration
+
+        # Convert to percentages
+        distribution = {}
+        for label, dur in posture_durations.items():
+            distribution[label] = round(
+                (dur / total_duration * 100) if total_duration > 0 else 0, 1
+            )
+
+        # Find dominant posture
+        dominant = max(posture_durations, key=posture_durations.get) if posture_durations else "unknown"
+
+        # Trunk flexion stats
+        valid_flexions = [f for f in trunk_flexions if f is not None]
+        avg_flexion = round(np.mean(valid_flexions), 1) if valid_flexions else None
+        max_flexion = round(max(valid_flexions), 1) if valid_flexions else None
+
+        # Hip angle stats
+        valid_hips = [a for a in hip_angles if a is not None]
+        avg_hip = round(np.mean(valid_hips), 1) if valid_hips else None
+
+        return PostureSummary(
+            dominant_posture=PostureLabel(dominant),
+            posture_distribution=distribution,
+            avg_trunk_flexion=avg_flexion,
+            max_trunk_flexion=max_flexion,
+            avg_hip_angle=avg_hip,
+        )
