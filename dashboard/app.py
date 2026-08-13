@@ -124,17 +124,22 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is not None:
-    # Save to temp file
+    # Read bytes and save to temp file for OpenCV processing
+    file_bytes = uploaded_file.getvalue()
     tfile = tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploaded_file.name).suffix)
-    tfile.write(uploaded_file.read())
+    tfile.write(file_bytes)
+    tfile.close()
     video_path = tfile.name
 
     col1, col2 = st.columns([2, 1])
     with col1:
-        st.video(video_path)
+        try:
+            st.video(file_bytes)
+        except Exception as e:
+            st.info("📹 Video file loaded for pipeline processing (browser preview unavailable for this codec format).")
     with col2:
         st.success(f"**File uploaded:** {uploaded_file.name}")
-        st.info(f"**Size:** {round(len(uploaded_file.getvalue()) / (1024*1024), 2)} MB")
+        st.info(f"**Size:** {round(len(file_bytes) / (1024*1024), 2)} MB")
         
         process_btn = st.button("🚀 Analyze Video", type="primary", use_container_width=True)
 
