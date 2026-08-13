@@ -62,6 +62,7 @@ class WorkerReport:
     standing_duration: float = 0.0
     bending_duration: float = 0.0
     severe_bending_duration: float = 0.0 # Bending > 60 degrees
+    walking_duration: float = 0.0       # Parameter 4: Walking duration
 
     # Parameter 5: Load carried
     load_instances: List[LoadInstance] = field(default_factory=list)

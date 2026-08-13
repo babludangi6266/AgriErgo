@@ -104,6 +104,11 @@ class ReportGenerator:
                         "duration_formatted": self._format_duration(wr.sitting_duration),
                         "percentage": float(self._pct(wr.sitting_duration, wr.total_tracked_time)),
                     },
+                    "1b_squatting": {
+                        "duration_seconds": float(getattr(wr, 'squatting_duration', 0.0)),
+                        "duration_formatted": self._format_duration(getattr(wr, 'squatting_duration', 0.0)),
+                        "percentage": float(self._pct(getattr(wr, 'squatting_duration', 0.0), wr.total_tracked_time)),
+                    },
                     "2_standing": {
                         "duration_seconds": float(wr.standing_duration),
                         "duration_formatted": self._format_duration(wr.standing_duration),
