@@ -22,7 +22,13 @@ from agriergo.perception.video_processor import VideoMetadata
 
 def _to_python_native(obj):
     """Recursively convert numpy data types and objects into standard Python primitives."""
-    if isinstance(obj, (np.bool_, bool)):
+    if hasattr(obj, 'item') and callable(getattr(obj, 'item')) and not isinstance(obj, (list, tuple, dict, str, np.ndarray)):
+        try:
+            obj = obj.item()
+        except Exception:
+            pass
+
+    if isinstance(obj, (np.bool_, bool)) or type(obj).__name__ in ("bool_", "bool"):
         return bool(obj)
     if isinstance(obj, (np.integer, int)):
         return int(obj)
