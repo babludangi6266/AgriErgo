@@ -32,6 +32,18 @@ def test_posture_sitting():
     assert res.label == PostureLabel.SITTING
 
 
+def test_posture_squatting():
+    """Test squatting classification when knee angle < 100 degrees and hip < 110 degrees."""
+    classifier = PostureClassifier(smoothing_window=1)
+    angles = JointAngles(trunk_flexion=15.0, avg_hip_angle=90.0, avg_knee_angle=70.0)
+
+    keypoints = np.zeros((17, 2))
+    confidences = np.ones(17)
+
+    res = classifier.classify(1, angles, keypoints, confidences)
+    assert res.label == PostureLabel.SQUATTING
+
+
 def test_posture_standing():
     """Test standing classification when upright and extended hips."""
     classifier = PostureClassifier(smoothing_window=1)

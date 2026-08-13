@@ -17,6 +17,7 @@ from config.settings import (
     TRIP_DIRECTION_CHANGE_ANGLE,
     TRIP_MIN_DISPLACEMENT,
     TRIP_SUSTAIN_FRAMES,
+    POSITION_DEADZONE_RADIUS,
     KP_LEFT_HIP, KP_RIGHT_HIP,
 )
 
@@ -45,10 +46,8 @@ class TripCounter:
     """
     Counts worker trips by detecting direction reversals in their trajectory.
 
-    A trip reversal is detected when:
-    1. The worker has traveled at least TRIP_MIN_DISPLACEMENT pixels
-    2. The direction changes by more than TRIP_DIRECTION_CHANGE_ANGLE degrees
-    3. The new direction is sustained for TRIP_SUSTAIN_FRAMES frames
+    Applies a spatial deadzone filter (POSITION_DEADZONE_RADIUS) to ignore
+    in-place swaying or standing shuffle movements.
     """
 
     def __init__(
@@ -56,10 +55,12 @@ class TripCounter:
         direction_change_angle: float = TRIP_DIRECTION_CHANGE_ANGLE,
         min_displacement: float = TRIP_MIN_DISPLACEMENT,
         sustain_frames: int = TRIP_SUSTAIN_FRAMES,
+        deadzone_radius: float = POSITION_DEADZONE_RADIUS,
     ):
         self.direction_change_angle = direction_change_angle
         self.min_displacement = min_displacement
         self.sustain_frames = sustain_frames
+        self.deadzone_radius = deadzone_radius
 
     def count_trips(
         self,

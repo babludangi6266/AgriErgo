@@ -209,11 +209,12 @@ if "pipeline_result" in st.session_state:
         
         param_data = [
             {"#": 1, "Parameter": "Sitting Duration", "Extracted Value": f"{report.sitting_duration}s ({round(report.sitting_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
+            {"#": "1b", "Parameter": "Squatting Duration", "Extracted Value": f"{report.squatting_duration}s ({round(report.squatting_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
             {"#": 2, "Parameter": "Standing Duration", "Extracted Value": f"{report.standing_duration}s ({round(report.standing_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
             {"#": 3, "Parameter": "Bending Duration", "Extracted Value": f"{report.bending_duration}s ({round(report.bending_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
             {"#": 4, "Parameter": "Walking Duration", "Extracted Value": f"{report.walking_duration}s ({round(report.walking_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
             {"#": 5, "Parameter": "Load Carried", "Extracted Value": f"{report.total_load_events} carrying events detected"},
-            {"#": 6, "Parameter": "Repetitive Movement", "Extracted Value": f"{report.repetitive_movement.cycles_per_minute} cycles/min ({report.repetitive_movement.frequency_hz} Hz)" if report.repetitive_movement and report.repetitive_movement.is_repetitive else "None detected"},
+            {"#": 6, "Parameter": "Repetitive Movement", "Extracted Value": f"{report.repetitive_movement.cycles_per_minute} cycles/min on {report.repetitive_movement.primary_joint} ({report.repetitive_movement.frequency_hz} Hz)" if report.repetitive_movement and report.repetitive_movement.is_repetitive else "None detected"},
             {"#": 7, "Parameter": "Number of Trips", "Extracted Value": f"{report.trip_count_result.trip_count if report.trip_count_result else 0} trips ({report.trip_count_result.total_distance_pixels if report.trip_count_result else 0} px travel)"},
             {"#": 8, "Parameter": "Tools/Equipment Used", "Extracted Value": ", ".join([t.tool_name for t in report.tools_used]) if report.tools_used else "None detected"},
             {"#": 9, "Parameter": "Posture & Angles", "Extracted Value": f"Avg Trunk Flexion: {report.posture_summary.avg_trunk_flexion}° | Max: {report.posture_summary.max_trunk_flexion}°" if report.posture_summary else "N/A"},

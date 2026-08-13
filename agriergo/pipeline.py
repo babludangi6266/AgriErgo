@@ -122,6 +122,8 @@ class AgriErgoPipeline:
         worker_trunk_flexions: Dict[int, List[Optional[float]]] = defaultdict(list)
         worker_hip_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
         worker_elbow_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
+        worker_wrist_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
+        worker_shoulder_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
         worker_reba_scores: Dict[int, List[REBAScore]] = defaultdict(list)
 
         frames_processed = 0
@@ -169,31 +171,40 @@ class AgriErgoPipeline:
                 if centroid is not None:
                     worker_trajectories[wid].append((timestamp, centroid[0], centroid[1]))
 
-                # Store angle data
+                # Store multi-joint angle series
                 worker_trunk_flexions[wid].append(angles.trunk_flexion)
                 worker_hip_angles[wid].append(angles.avg_hip_angle)
                 worker_elbow_angles[wid].append(
                     angles.left_elbow_angle or angles.right_elbow_angle
                 )
+                worker_wrist_angles[wid].append(
+                    angles.left_wrist_angle or angles.right_wrist_angle
+                )
+                worker_shoulder_angles[wid].append(
+                    angles.left_shoulder_angle or angles.right_shoulder_angle
+                )
 
-                # Compute per-frame REBA score
-                reba = self.scorer.score_frame(angles)
+                # Check if person carries load to pass load_force to REBA
+                has_load = any(
+                    det["timestamp"] == timestamp for det in worker_load_detections[wid]
+                )
+                load_force = 2 if has_load else 0
+
+                # Compute per-frame REBA score with load adjustment
+                reba = self.scorer.score_frame(angles, load_force=load_force)
                 worker_reba_scores[wid].append(reba)
 
                 # Associate detected objects with this person
                 if detected_objects:
                     for obj in detected_objects:
-                        # Check if object is near this person
                         ox, oy = obj.center
                         px1, py1, px2, py2 = person.bbox
                         pcx, pcy = (px1 + px2) / 2, (py1 + py2) / 2
                         diag = np.sqrt((px2 - px1)**2 + (py2 - py1)**2)
 
                         if np.sqrt((ox - pcx)**2 + (oy - pcy)**2) < diag * 0.6:
-                            # Object is near this person
                             worker_tool_detections[wid][obj.class_name].append(timestamp)
 
-                            # Check if it's a load-type object
                             if obj.class_name in {"backpack", "handbag", "suitcase"}:
                                 worker_load_detections[wid].append({
                                     "timestamp": timestamp,
@@ -202,7 +213,6 @@ class AgriErgoPipeline:
 
             frames_processed += 1
 
-            # Progress update
             if total_frames > 0 and frames_processed % 10 == 0:
                 pct = 0.05 + (frames_processed / total_frames) * 0.65
                 self._report_progress(
@@ -226,13 +236,15 @@ class AgriErgoPipeline:
             # Segment activities
             bouts = self.activity_segmenter.segment(wid, records)
 
-            # Detect repetitive motions (using elbow angle series)
-            elbow_series = np.array([
-                a if a is not None else np.nan
-                for a in worker_elbow_angles[wid]
-            ])
-            rep_result = self.repetition_detector.detect_frequency(
-                elbow_series, self.sample_fps
+            # Detect multi-joint repetitive motions (elbow, wrist, shoulder, trunk)
+            multi_joint_series = {
+                "elbow": np.array([a if a is not None else np.nan for a in worker_elbow_angles[wid]]),
+                "wrist": np.array([a if a is not None else np.nan for a in worker_wrist_angles[wid]]),
+                "shoulder": np.array([a if a is not None else np.nan for a in worker_shoulder_angles[wid]]),
+                "trunk": np.array([a if a is not None else np.nan for a in worker_trunk_flexions[wid]]),
+            }
+            rep_result = self.repetition_detector.detect_multi_joint(
+                multi_joint_series, self.sample_fps
             )
 
             # Count trips

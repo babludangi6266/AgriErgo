@@ -9,7 +9,7 @@ frequency in cycles per minute.
 import numpy as np
 from scipy import signal
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict
 from pathlib import Path
 
 import sys
@@ -23,25 +23,26 @@ from config.settings import (
 
 @dataclass
 class RepetitionResult:
-    """Result of repetitive motion analysis for a joint angle series."""
+    """Result of repetitive motion analysis for joint angle series."""
     frequency_hz: Optional[float]       # Dominant frequency in Hz
     cycles_per_minute: Optional[float]  # Frequency in cycles/min
     peak_count: int                     # Number of peaks detected
     confidence: float                   # Detection confidence (0-1)
     is_repetitive: bool                 # Whether motion is classified as repetitive
+    primary_joint: str = "elbow"        # Joint channel exhibiting highest spectral periodicity
 
 
 class RepetitionDetector:
     """
-    Detects periodic/repetitive motions from joint angle time series.
+    Detects periodic/repetitive motions across multiple joint channels.
 
-    Uses scipy.signal.find_peaks() and FFT-based spectral analysis to
-    identify dominant oscillation frequencies in joint angle data.
+    Evaluates time series from:
+    - Elbow angle (weeding, pruning strokes)
+    - Wrist angle (harvesting, picking)
+    - Shoulder elevation (hoeing, digging)
+    - Trunk flexion (stooped hoeing)
 
-    Typical repetitive farm motions:
-    - Weeding strokes: 0.5–1.5 Hz (30–90 cycles/min)
-    - Harvesting/picking: 0.3–1.0 Hz (18–60 cycles/min)
-    - Hoeing/digging: 0.3–0.8 Hz (18–48 cycles/min)
+    Selects the joint displaying the highest periodicity confidence.
     """
 
     def __init__(
@@ -53,6 +54,47 @@ class RepetitionDetector:
         self.freq_min = freq_min
         self.freq_max = freq_max
         self.peak_prominence = peak_prominence
+
+    def detect_multi_joint(
+        self,
+        joint_series_dict: Dict[str, np.ndarray],
+        sample_fps: float,
+        min_duration_seconds: float = 5.0,
+    ) -> RepetitionResult:
+        """
+        Analyze multiple joint angle channels and return the dominant repetition result.
+
+        Args:
+            joint_series_dict: Dictionary mapping joint_name -> 1D angle series.
+                               e.g., {"elbow": ..., "wrist": ..., "shoulder": ..., "trunk": ...}
+            sample_fps: Sampling rate in frames per second.
+            min_duration_seconds: Minimum series duration.
+
+        Returns:
+            RepetitionResult for the joint with highest repetition confidence.
+        """
+        best_result = RepetitionResult(
+            frequency_hz=None,
+            cycles_per_minute=None,
+            peak_count=0,
+            confidence=0.0,
+            is_repetitive=False,
+            primary_joint="elbow",
+        )
+
+        for joint_name, series in joint_series_dict.items():
+            if series is None or len(series) == 0:
+                continue
+
+            res = self.detect_frequency(
+                series, sample_fps, min_duration_seconds=min_duration_seconds
+            )
+            res.primary_joint = joint_name
+
+            if res.confidence > best_result.confidence:
+                best_result = res
+
+        return best_result
 
     def detect_frequency(
         self,

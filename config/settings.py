@@ -65,22 +65,26 @@ KP_RIGHT_ANKLE = 16
 # ──────────────────────────────────────────────
 # Posture Classification Thresholds (degrees)
 # ──────────────────────────────────────────────
-TRUNK_FLEXION_BENDING = 30.0           # Trunk flexion > 30° from vertical → bending
+TRUNK_FLEXION_MILD_BENDING = 20.0      # Trunk flexion 20°-60° → mild bending (ISO 11226)
+TRUNK_FLEXION_BENDING = 30.0           # General bending threshold
+TRUNK_FLEXION_SEVERE_BENDING = 60.0    # Trunk flexion > 60° → severe stooping
 TRUNK_FLEXION_UPRIGHT = 15.0           # Trunk flexion < 15° → upright
-HIP_ANGLE_SITTING = 120.0             # Hip angle < 120° → sitting candidate
-HIP_ANGLE_STANDING = 160.0            # Hip angle > 160° → standing candidate
+HIP_ANGLE_SITTING = 120.0              # Hip angle < 120° → sitting/squatting candidate
+HIP_ANGLE_STANDING = 160.0             # Hip angle > 160° → standing candidate
+KNEE_ANGLE_SQUATTING = 100.0           # Knee angle < 100° with low hip → squatting
 
 # Walking detection: ankle displacement between frames (pixels)
 WALKING_DISPLACEMENT_THRESHOLD = 15.0  # Pixels moved between sampled frames
 WALKING_MIN_CONSECUTIVE = 3            # Minimum consecutive frames with movement
 
 # ──────────────────────────────────────────────
-# Temporal Smoothing
+# Temporal Smoothing & Deadzone Filtering
 # ──────────────────────────────────────────────
-POSTURE_SMOOTHING_WINDOW = 5           # Majority-vote over N frames
+POSTURE_SMOOTHING_WINDOW = 5           # Confidence-weighted window over N frames
 MIN_BOUT_DURATION = 1.0                # Minimum activity bout duration (seconds)
 REST_STILLNESS_THRESHOLD = 5.0         # Keypoint movement below this → still (pixels)
 REST_MIN_DURATION = 5.0                # Minimum rest duration (seconds)
+POSITION_DEADZONE_RADIUS = 25.0        # Ignore spatial jitter within 25px radius
 
 # ──────────────────────────────────────────────
 # Repetitive Motion Detection

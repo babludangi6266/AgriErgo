@@ -51,35 +51,17 @@ class PostureSummary:
 @dataclass
 class WorkerReport:
     """
-    Complete report for a single worker containing all 11 parameters.
-
-    Parameters map to the project requirements:
-    1. sitting_duration
-    2. standing_duration
-    3. bending_duration
-    4. walking_duration
-    5. load_instances
-    6. repetitive_movement
-    7. trip_count_result
-    8. tools_used
-    9. posture_summary
-    10. continuous_work_duration
-    11. rest_summary
+    Complete report for a single worker containing all parameters.
     """
     worker_id: int
     total_tracked_time: float           # Total time worker was tracked (seconds)
 
-    # Parameter 1: Sitting duration (seconds)
+    # Posture durations (seconds)
     sitting_duration: float = 0.0
-
-    # Parameter 2: Standing duration (seconds)
+    squatting_duration: float = 0.0     # Parameter 1b: Squatting duration
     standing_duration: float = 0.0
-
-    # Parameter 3: Bending duration (seconds)
     bending_duration: float = 0.0
-
-    # Parameter 4: Walking duration (seconds)
-    walking_duration: float = 0.0
+    severe_bending_duration: float = 0.0 # Bending > 60 degrees
 
     # Parameter 5: Load carried
     load_instances: List[LoadInstance] = field(default_factory=list)
@@ -161,6 +143,8 @@ class ParameterAggregator:
         for bout in activity_bouts:
             if bout.activity == PostureLabel.SITTING:
                 report.sitting_duration += bout.duration
+            elif bout.activity == PostureLabel.SQUATTING:
+                report.squatting_duration += bout.duration
             elif bout.activity == PostureLabel.STANDING and not bout.is_rest:
                 report.standing_duration += bout.duration
             elif bout.activity == PostureLabel.BENDING:
@@ -169,6 +153,7 @@ class ParameterAggregator:
                 report.walking_duration += bout.duration
 
         report.sitting_duration = round(report.sitting_duration, 2)
+        report.squatting_duration = round(report.squatting_duration, 2)
         report.standing_duration = round(report.standing_duration, 2)
         report.bending_duration = round(report.bending_duration, 2)
         report.walking_duration = round(report.walking_duration, 2)

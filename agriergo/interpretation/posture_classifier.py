@@ -33,6 +33,7 @@ from agriergo.interpretation.joint_angles import JointAngles
 class PostureLabel(str, Enum):
     """Classified posture labels."""
     SITTING = "sitting"
+    SQUATTING = "squatting"
     STANDING = "standing"
     BENDING = "bending"
     WALKING = "walking"
@@ -47,29 +48,31 @@ class PostureResult:
     confidence: float               # Heuristic confidence (0-1)
     trunk_flexion: Optional[float]
     hip_angle: Optional[float]
+    knee_angle: Optional[float]
     displacement: Optional[float]
 
 
 class PostureClassifier:
     """
-    Rule-based posture classification from joint angles.
+    Rule-based posture classification from joint angles with ISO 11226 compliance.
 
     Classification logic (priority order):
     1. WALKING — if ankle displacement between frames exceeds threshold
-    2. BENDING — if trunk flexion > 30° from vertical
-    3. SITTING — if hip angle < 120°
-    4. STANDING — if trunk upright (< 15°) and hip angle > 160°
-    5. UNKNOWN — insufficient keypoint data
+    2. SQUATTING — if knee flexion < 100° and hips low near ankles
+    3. BENDING — if trunk flexion > 30° from vertical (> 60° = severe stoop)
+    4. SITTING — if hip angle < 120°
+    5. STANDING — if trunk upright (< 15°) and hip angle > 160°
+    6. UNKNOWN — insufficient keypoint data
 
-    Temporal smoothing: majority-vote over a sliding window of N frames
-    per worker to reduce flickering.
+    Temporal smoothing: confidence-weighted majority vote over a sliding window
+    to ignore low-confidence frames caused by crop occlusion.
     """
 
     def __init__(self, smoothing_window: int = POSTURE_SMOOTHING_WINDOW):
         self.smoothing_window = smoothing_window
-        # Per-worker label history for temporal smoothing
+        # Per-worker label history: deque of (PostureLabel, confidence)
         self._history: Dict[int, deque] = {}
-        # Per-worker previous ankle positions for displacement calculation
+        # Per-worker previous ankle positions
         self._prev_ankles: Dict[int, Optional[np.ndarray]] = {}
         # Per-worker walking frame counter
         self._walk_counter: Dict[int, int] = {}
@@ -91,7 +94,7 @@ class PostureClassifier:
             confidences: Shape (17,) keypoint confidences.
 
         Returns:
-            PostureResult with smoothed label.
+            PostureResult with confidence-weighted smoothed label.
         """
         # Initialize per-worker state
         if worker_id not in self._history:
@@ -99,24 +102,31 @@ class PostureClassifier:
             self._prev_ankles[worker_id] = None
             self._walk_counter[worker_id] = 0
 
-        # ── Compute ankle displacement ──
+        # Mean keypoint confidence for this detection
+        valid_confs = confidences[confidences > 0.1]
+        mean_conf = float(np.mean(valid_confs)) if len(valid_confs) > 0 else 0.5
+
+        # Compute ankle displacement
         displacement = self._compute_displacement(worker_id, keypoints, confidences)
 
-        # ── Apply classification rules ──
-        raw_label, confidence = self._apply_rules(
-            joint_angles, displacement, worker_id
+        # Apply classification rules
+        raw_label, rule_confidence = self._apply_rules(
+            joint_angles, displacement, worker_id, keypoints, confidences
         )
+        
+        frame_confidence = rule_confidence * mean_conf
 
-        # ── Temporal smoothing ──
-        self._history[worker_id].append(raw_label)
+        # Store in history for confidence-weighted temporal smoothing
+        self._history[worker_id].append((raw_label, frame_confidence))
         smoothed_label = self._smooth(worker_id)
 
         return PostureResult(
             label=smoothed_label,
             raw_label=raw_label,
-            confidence=confidence,
+            confidence=round(frame_confidence, 2),
             trunk_flexion=joint_angles.trunk_flexion,
             hip_angle=joint_angles.avg_hip_angle,
+            knee_angle=joint_angles.avg_knee_angle,
             displacement=displacement,
         )
 
@@ -131,7 +141,6 @@ class PostureClassifier:
         if not (l_valid or r_valid):
             return None
 
-        # Use mid-ankle if both available, otherwise whichever is valid
         if l_valid and r_valid:
             current = (keypoints[KP_LEFT_ANKLE] + keypoints[KP_RIGHT_ANKLE]) / 2
         elif l_valid:
@@ -152,6 +161,8 @@ class PostureClassifier:
         angles: JointAngles,
         displacement: Optional[float],
         worker_id: int,
+        keypoints: np.ndarray,
+        confidences: np.ndarray,
     ) -> tuple:
         """Apply rule-based classification. Returns (label, confidence)."""
 
@@ -159,45 +170,50 @@ class PostureClassifier:
         if displacement is not None and displacement > WALKING_DISPLACEMENT_THRESHOLD:
             self._walk_counter[worker_id] = self._walk_counter.get(worker_id, 0) + 1
             if self._walk_counter[worker_id] >= WALKING_MIN_CONSECUTIVE:
-                return PostureLabel.WALKING, 0.8
+                return PostureLabel.WALKING, 0.85
         else:
             self._walk_counter[worker_id] = 0
 
-        # Rule 2: BENDING — trunk flexion > threshold
+        # Rule 2: SQUATTING — deep knee flexion (< 100°) with low hip height
+        if angles.avg_knee_angle is not None and angles.avg_knee_angle < 100.0:
+            if angles.avg_hip_angle is not None and angles.avg_hip_angle < 110.0:
+                return PostureLabel.SQUATTING, 0.90
+
+        # Rule 3: BENDING — trunk flexion > 30° from vertical
         if angles.trunk_flexion is not None:
             if angles.trunk_flexion > TRUNK_FLEXION_BENDING:
-                return PostureLabel.BENDING, min(0.9, angles.trunk_flexion / 60.0)
+                conf = min(0.95, 0.6 + (angles.trunk_flexion / 100.0))
+                return PostureLabel.BENDING, conf
 
-        # Rule 3: SITTING — hip angle < threshold
+        # Rule 4: SITTING — hip angle < 120°
         if angles.avg_hip_angle is not None:
             if angles.avg_hip_angle < HIP_ANGLE_SITTING:
-                return PostureLabel.SITTING, 0.75
+                return PostureLabel.SITTING, 0.80
 
-        # Rule 4: STANDING — trunk upright + hip extended
+        # Rule 5: STANDING — trunk upright + hip extended
         if angles.trunk_flexion is not None and angles.avg_hip_angle is not None:
             if (angles.trunk_flexion < TRUNK_FLEXION_UPRIGHT and
                     angles.avg_hip_angle > HIP_ANGLE_STANDING):
-                return PostureLabel.STANDING, 0.85
+                return PostureLabel.STANDING, 0.90
 
-        # If trunk is roughly upright but hip data is missing → likely standing
+        # Default upright fallback
         if angles.trunk_flexion is not None and angles.trunk_flexion < TRUNK_FLEXION_BENDING:
-            return PostureLabel.STANDING, 0.5
+            return PostureLabel.STANDING, 0.60
 
         return PostureLabel.UNKNOWN, 0.0
 
     def _smooth(self, worker_id: int) -> PostureLabel:
-        """Apply majority-vote smoothing over the label history window."""
+        """Apply confidence-weighted majority vote over the history window."""
         history = self._history[worker_id]
         if not history:
             return PostureLabel.UNKNOWN
 
-        # Count occurrences
-        counts: Dict[PostureLabel, int] = {}
-        for label in history:
-            counts[label] = counts.get(label, 0) + 1
+        # Sum confidence per label
+        weights: Dict[PostureLabel, float] = {}
+        for label, conf in history:
+            weights[label] = weights.get(label, 0.0) + max(0.1, conf)
 
-        # Return the most common label
-        return max(counts, key=counts.get)
+        return max(weights, key=weights.get)
 
     def reset(self, worker_id: Optional[int] = None):
         """Reset state for a specific worker or all workers."""
