@@ -20,18 +20,21 @@ from agriergo.analytics.parameter_aggregator import WorkerReport
 from agriergo.perception.video_processor import VideoMetadata
 
 
-class NumpyEncoder(json.JSONEncoder):
-    """Custom JSON encoder to convert numpy types (bool_, int64, float64, ndarray) to Python types."""
-    def default(self, obj):
-        if isinstance(obj, (np.bool_, bool)):
-            return bool(obj)
-        if isinstance(obj, (np.integer, int)):
-            return int(obj)
-        if isinstance(obj, (np.floating, float)):
-            return float(obj)
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        return super().default(obj)
+def _to_python_native(obj):
+    """Recursively convert numpy data types and objects into standard Python primitives."""
+    if isinstance(obj, (np.bool_, bool)):
+        return bool(obj)
+    if isinstance(obj, (np.integer, int)):
+        return int(obj)
+    if isinstance(obj, (np.floating, float)):
+        return float(obj)
+    if isinstance(obj, np.ndarray):
+        return [_to_python_native(x) for x in obj.tolist()]
+    if isinstance(obj, dict):
+        return {str(k): _to_python_native(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_to_python_native(x) for x in obj]
+    return obj
 
 
 class ReportGenerator:
@@ -68,10 +71,10 @@ class ReportGenerator:
             },
             "video_info": {
                 "filename": video_metadata.filename,
-                "duration_seconds": video_metadata.duration_seconds,
+                "duration_seconds": float(video_metadata.duration_seconds),
                 "resolution": f"{video_metadata.width}x{video_metadata.height}",
-                "fps": video_metadata.fps,
-                "total_frames": video_metadata.total_frames,
+                "fps": float(video_metadata.fps),
+                "total_frames": int(video_metadata.total_frames),
             },
             "summary": {
                 "total_workers_detected": len(worker_reports),
@@ -84,84 +87,84 @@ class ReportGenerator:
 
         for wr in worker_reports:
             worker_data = {
-                "worker_id": wr.worker_id,
-                "total_tracked_time": wr.total_tracked_time,
+                "worker_id": int(wr.worker_id),
+                "total_tracked_time": float(wr.total_tracked_time),
                 "total_tracked_time_formatted": self._format_duration(
                     wr.total_tracked_time
                 ),
                 "parameters": {
                     "1_sitting": {
-                        "duration_seconds": wr.sitting_duration,
+                        "duration_seconds": float(wr.sitting_duration),
                         "duration_formatted": self._format_duration(wr.sitting_duration),
-                        "percentage": self._pct(wr.sitting_duration, wr.total_tracked_time),
+                        "percentage": float(self._pct(wr.sitting_duration, wr.total_tracked_time)),
                     },
                     "2_standing": {
-                        "duration_seconds": wr.standing_duration,
+                        "duration_seconds": float(wr.standing_duration),
                         "duration_formatted": self._format_duration(wr.standing_duration),
-                        "percentage": self._pct(wr.standing_duration, wr.total_tracked_time),
+                        "percentage": float(self._pct(wr.standing_duration, wr.total_tracked_time)),
                     },
                     "3_bending": {
-                        "duration_seconds": wr.bending_duration,
+                        "duration_seconds": float(wr.bending_duration),
                         "duration_formatted": self._format_duration(wr.bending_duration),
-                        "percentage": self._pct(wr.bending_duration, wr.total_tracked_time),
+                        "percentage": float(self._pct(wr.bending_duration, wr.total_tracked_time)),
                     },
                     "4_walking": {
-                        "duration_seconds": wr.walking_duration,
+                        "duration_seconds": float(wr.walking_duration),
                         "duration_formatted": self._format_duration(wr.walking_duration),
-                        "percentage": self._pct(wr.walking_duration, wr.total_tracked_time),
+                        "percentage": float(self._pct(wr.walking_duration, wr.total_tracked_time)),
                     },
                     "5_load_carried": {
-                        "total_events": wr.total_load_events,
+                        "total_events": int(wr.total_load_events),
                         "instances": [
                             {
-                                "timestamp": li.timestamp,
-                                "object_class": li.object_class,
-                                "weight_kg": li.weight_kg,
+                                "timestamp": float(li.timestamp),
+                                "object_class": str(li.object_class),
+                                "weight_kg": float(li.weight_kg) if li.weight_kg is not None else None,
                             }
                             for li in wr.load_instances
                         ],
                     },
                     "6_repetitive_movement": {
                         "is_repetitive": (
-                            wr.repetitive_movement.is_repetitive
+                            bool(wr.repetitive_movement.is_repetitive)
                             if wr.repetitive_movement else False
                         ),
                         "cycles_per_minute": (
-                            wr.repetitive_movement.cycles_per_minute
-                            if wr.repetitive_movement else None
+                            float(wr.repetitive_movement.cycles_per_minute)
+                            if wr.repetitive_movement and wr.repetitive_movement.cycles_per_minute is not None else None
                         ),
                         "frequency_hz": (
-                            wr.repetitive_movement.frequency_hz
-                            if wr.repetitive_movement else None
+                            float(wr.repetitive_movement.frequency_hz)
+                            if wr.repetitive_movement and wr.repetitive_movement.frequency_hz is not None else None
                         ),
                         "confidence": (
-                            wr.repetitive_movement.confidence
+                            float(wr.repetitive_movement.confidence)
                             if wr.repetitive_movement else 0.0
                         ),
                     },
                     "7_trips": {
                         "count": (
-                            wr.trip_count_result.trip_count
+                            int(wr.trip_count_result.trip_count)
                             if wr.trip_count_result else 0
                         ),
                         "total_distance_pixels": (
-                            wr.trip_count_result.total_distance_pixels
-                            if wr.trip_count_result else 0
+                            float(wr.trip_count_result.total_distance_pixels)
+                            if wr.trip_count_result else 0.0
                         ),
                     },
                     "8_tools_equipment": [
                         {
-                            "tool_name": t.tool_name,
-                            "first_seen": t.first_seen,
-                            "last_seen": t.last_seen,
-                            "duration": t.duration,
-                            "detection_count": t.detection_count,
+                            "tool_name": str(t.tool_name),
+                            "first_seen": float(t.first_seen),
+                            "last_seen": float(t.last_seen),
+                            "duration": float(t.duration),
+                            "detection_count": int(t.detection_count),
                         }
                         for t in wr.tools_used
                     ],
                     "9_posture": {
                         "dominant_posture": (
-                            wr.posture_summary.dominant_posture.value
+                            str(wr.posture_summary.dominant_posture.value)
                             if wr.posture_summary else "unknown"
                         ),
                         "distribution": (
@@ -169,56 +172,58 @@ class ReportGenerator:
                             if wr.posture_summary else {}
                         ),
                         "avg_trunk_flexion_degrees": (
-                            wr.posture_summary.avg_trunk_flexion
-                            if wr.posture_summary else None
+                            float(wr.posture_summary.avg_trunk_flexion)
+                            if wr.posture_summary and wr.posture_summary.avg_trunk_flexion is not None else None
                         ),
                         "max_trunk_flexion_degrees": (
-                            wr.posture_summary.max_trunk_flexion
-                            if wr.posture_summary else None
+                            float(wr.posture_summary.max_trunk_flexion)
+                            if wr.posture_summary and wr.posture_summary.max_trunk_flexion is not None else None
                         ),
                     },
                     "10_continuous_work": {
-                        "longest_bout_seconds": wr.longest_work_bout,
+                        "longest_bout_seconds": float(wr.longest_work_bout),
                         "longest_bout_formatted": self._format_duration(
                             wr.longest_work_bout
                         ),
-                        "avg_bout_seconds": wr.avg_work_bout,
-                        "total_work_bouts": len(wr.work_bouts),
+                        "avg_bout_seconds": float(wr.avg_work_bout),
+                        "total_work_bouts": int(len(wr.work_bouts)),
                     },
                     "11_rest": {
-                        "total_duration_seconds": wr.total_rest_duration,
+                        "total_duration_seconds": float(wr.total_rest_duration),
                         "total_duration_formatted": self._format_duration(
                             wr.total_rest_duration
                         ),
-                        "rest_count": wr.rest_count,
-                        "avg_rest_seconds": wr.avg_rest_duration,
+                        "rest_count": int(wr.rest_count),
+                        "avg_rest_seconds": float(wr.avg_rest_duration),
                     },
                 },
                 "ergonomic_score": {
-                    "reba_score": wr.reba_score,
-                    "risk_level": wr.reba_risk_level,
+                    "reba_score": int(wr.reba_score) if wr.reba_score is not None else None,
+                    "risk_level": str(wr.reba_risk_level) if wr.reba_risk_level is not None else None,
                 },
                 "activity_timeline": [
                     {
-                        "activity": bout.activity.value,
-                        "start_time": bout.start_time,
-                        "end_time": bout.end_time,
-                        "duration": bout.duration,
-                        "is_rest": bout.is_rest,
+                        "activity": str(bout.activity.value),
+                        "start_time": float(bout.start_time),
+                        "end_time": float(bout.end_time),
+                        "duration": float(bout.duration),
+                        "is_rest": bool(bout.is_rest),
                     }
                     for bout in wr.activity_bouts
                 ],
             }
             report["workers"].append(worker_data)
 
+        # Recursively sanitize entire report dictionary
+        clean_report = _to_python_native(report)
+
         # Write to file if path provided
         if output_path:
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(report, f, indent=2, ensure_ascii=False, cls=NumpyEncoder)
+                json.dump(clean_report, f, indent=2, ensure_ascii=False)
 
-        # Convert report to JSON-serializable python dict using NumpyEncoder
-        return json.loads(json.dumps(report, cls=NumpyEncoder))
+        return clean_report
 
     def generate_csv(
         self,
