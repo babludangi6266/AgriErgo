@@ -44,7 +44,7 @@ class PDFReportGenerator:
         """
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(
-            output_path if output_path else buffer,
+            buffer,
             pagesize=A4,
             rightMargin=36,
             leftMargin=36,
@@ -99,15 +99,15 @@ class PDFReportGenerator:
         elements = []
 
         # ── Header Section ──
-        elements.append(Paragraph("🌾 AgriErgo Assessment Report", title_style))
+        elements.append(Paragraph("AgriErgo Assessment Report", title_style))
         elements.append(Paragraph(
-            f"Video-Based Farm Worker Ergonomics & Drudgery Evaluation | Generated: {datetime.now().strftime('%B %d, %Y - %H:%M')}",
+            f"Video-Based Farm Worker Ergonomics &amp; Drudgery Evaluation | Generated: {datetime.now().strftime('%B %d, %Y - %H:%M')}",
             subtitle_style
         ))
         elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#3B82F6"), spaceAfter=15))
 
         # ── Video Info & Metadata Table ──
-        elements.append(Paragraph("1. Video & Dataset Metadata", section_heading))
+        elements.append(Paragraph("1. Video &amp; Dataset Metadata", section_heading))
         meta_data = [
             [
                 Paragraph("<b>Filename:</b>", body_style), Paragraph(video_metadata.filename, body_style),
@@ -135,7 +135,7 @@ class PDFReportGenerator:
         # ── Per-Worker Analysis Sections ──
         for wr in worker_reports:
             task_title = getattr(wr, 'classified_task', 'General Agricultural Work') or 'General Agricultural Work'
-            elements.append(Paragraph(f"2. Worker #{wr.worker_id} Assessment — <i>{task_title}</i>", section_heading))
+            elements.append(Paragraph(f"2. Worker #{wr.worker_id} Assessment - {task_title}", section_heading))
 
             # Ergonomic & Drudgery Scorecard Cards
             rula = getattr(wr, 'rula_score', None) or 1
@@ -182,9 +182,9 @@ class PDFReportGenerator:
                 [Paragraph("6. Repetitive Motion", body_style), Paragraph(f"{wr.repetitive_movement.cycles_per_minute} cycles/min" if wr.repetitive_movement and wr.repetitive_movement.is_repetitive else "None detected", body_style)],
                 [Paragraph("7. Field Trips Count", body_style), Paragraph(f"{wr.trip_count_result.trip_count if wr.trip_count_result else 0} trips", body_style)],
                 [Paragraph("8. Tools/Equipment Detected", body_style), Paragraph(", ".join([t.tool_name for t in wr.tools_used]) if wr.tools_used else "None", body_style)],
-                [Paragraph("9. Trunk Flexion Angle", body_style), Paragraph(f"Avg: {wr.posture_summary.avg_trunk_flexion if wr.posture_summary else 'N/A'}° | Max: {wr.posture_summary.max_trunk_flexion if wr.posture_summary else 'N/A'}°", body_style)],
+                [Paragraph("9. Trunk Flexion Angle", body_style), Paragraph(f"Avg: {wr.posture_summary.avg_trunk_flexion if wr.posture_summary else 'N/A'} deg | Max: {wr.posture_summary.max_trunk_flexion if wr.posture_summary else 'N/A'} deg", body_style)],
                 [Paragraph("10. Continuous Work Bout", body_style), Paragraph(f"Longest: {wr.longest_work_bout}s | Avg: {wr.avg_work_bout}s", body_style)],
-                [Paragraph("11. Rest Duration & Count", body_style), Paragraph(f"Total Rest: {wr.total_rest_duration}s ({wr.rest_count} rest periods)", body_style)],
+                [Paragraph("11. Rest Duration and Count", body_style), Paragraph(f"Total Rest: {wr.total_rest_duration}s ({wr.rest_count} rest periods)", body_style)],
             ]
             p_table = Table(param_rows, colWidths=[200, 320])
             p_table.setStyle(TableStyle([
@@ -200,4 +200,13 @@ class PDFReportGenerator:
         
         pdf_bytes = buffer.getvalue()
         buffer.close()
+
+        # Optionally save to disk
+        if output_path:
+            try:
+                with open(output_path, 'wb') as f:
+                    f.write(pdf_bytes)
+            except Exception:
+                pass
+
         return pdf_bytes
