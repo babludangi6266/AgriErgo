@@ -317,6 +317,9 @@ class AgriErgoPipeline:
         json_report = self.report_gen.generate_json(
             worker_reports, metadata, json_path
         )
+        csv_report = self.report_gen.generate_csv(
+            worker_reports, metadata, csv_path
+        )
         pdf_path = str(RESULTS_DIR / f"{video_name}_report.pdf")
         pdf_report = self.pdf_gen.generate_pdf(
             worker_reports, metadata, pdf_path
