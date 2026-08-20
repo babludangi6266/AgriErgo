@@ -183,16 +183,38 @@ if "pipeline_result" in st.session_state:
     if not result.worker_reports:
         st.warning("No workers detected with sufficient frame history.")
     else:
-        # Worker Selection Tabs
+        # ── Multi-Worker Comparative Leaderboard ──
+        if len(result.worker_reports) > 1:
+            st.markdown("### 🏆 Multi-Worker Ergonomic & Drudgery Leaderboard")
+            leaderboard_data = [
+                {
+                    "Worker ID": f"Worker #{w.worker_id}",
+                    "Auto-Classified Task": getattr(w, 'classified_task', 'General Work') or 'General Work',
+                    "REBA Risk": f"{w.reba_score or 'N/A'} ({w.reba_risk_level or 'N/A'})",
+                    "RULA Risk": getattr(w, 'rula_score', 'N/A') or 'N/A',
+                    "Drudgery Index (ADI)": f"{getattr(w, 'drudgery_index', 0.0)} / 100",
+                    "L5/S1 Compression": f"{getattr(w, 'l5s1_compression_n', 0.0)} N",
+                    "Dominant Posture": w.posture_summary.dominant_posture.value.title() if w.posture_summary else "N/A",
+                }
+                for w in sorted(result.worker_reports, key=lambda x: getattr(x, 'drudgery_index', 0.0) or 0.0, reverse=True)
+            ]
+            st.dataframe(pd.DataFrame(leaderboard_data), use_container_width=True, hide_index=True)
+            st.markdown("---")
+
+        # Worker Selection
         worker_ids = [w.worker_id for w in result.worker_reports]
-        selected_worker_id = st.selectbox("Select Worker to View Assessment", worker_ids, format_func=lambda x: f"Worker #{x}")
+        selected_worker_id = st.selectbox("Select Worker to View Detailed Assessment", worker_ids, format_func=lambda x: f"Worker #{x}")
 
         report: WorkerReport = next(w for w in result.worker_reports if w.worker_id == selected_worker_id)
 
-        st.subheader(f"Detailed Analysis for Worker #{selected_worker_id}")
+        task_name = getattr(report, 'classified_task', 'General Agricultural Work') or 'General Agricultural Work'
+        task_hazard = getattr(report, 'task_hazard_profile', '') or ''
+        st.subheader(f"Detailed Analysis for Worker #{selected_worker_id} — 🌾 {task_name}")
+        if task_hazard:
+            st.caption(f"**Primary Ergonomic Hazard Profile:** {task_hazard}")
 
-        # Worker Overview Cards
-        c1, c2, c3, c4, c5 = st.columns(5)
+        # Worker Overview Cards (6 columns)
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
         with c1:
             st.metric("Tracked Time", f"{report.total_tracked_time}s")
         with c2:
@@ -203,6 +225,9 @@ if "pipeline_result" in st.session_state:
             adi_val = getattr(report, 'drudgery_index', 0.0) or 0.0
             st.metric("Drudgery Index (ADI)", f"{adi_val} / 100")
         with c5:
+            l5s1_val = getattr(report, 'l5s1_compression_n', 0.0) or 0.0
+            st.metric("L5/S1 Compression", f"{l5s1_val} N")
+        with c6:
             st.metric("Fatigue Level", f"{getattr(report, 'fatigue_level', 0.0) or 0.0}%")
 
         # Drudgery Recommendations Callout
@@ -214,18 +239,18 @@ if "pipeline_result" in st.session_state:
         st.markdown("### 📋 The 11 Ergonomic & Drudgery Parameters")
         
         param_data = [
-            {"#": 1, "Parameter": "Sitting Duration", "Extracted Value": f"{report.sitting_duration}s ({round(report.sitting_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
+            {"#": "1", "Parameter": "Sitting Duration", "Extracted Value": f"{report.sitting_duration}s ({round(report.sitting_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
             {"#": "1b", "Parameter": "Squatting Duration", "Extracted Value": f"{getattr(report, 'squatting_duration', 0.0)}s ({round(getattr(report, 'squatting_duration', 0.0)/max(1, report.total_tracked_time)*100, 1)}%)"},
-            {"#": 2, "Parameter": "Standing Duration", "Extracted Value": f"{report.standing_duration}s ({round(report.standing_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
-            {"#": 3, "Parameter": "Bending Duration", "Extracted Value": f"{report.bending_duration}s ({round(report.bending_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
-            {"#": 4, "Parameter": "Walking Duration", "Extracted Value": f"{report.walking_duration}s ({round(report.walking_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
-            {"#": 5, "Parameter": "Load Carried", "Extracted Value": f"{report.total_load_events} carrying events detected"},
-            {"#": 6, "Parameter": "Repetitive Movement", "Extracted Value": f"{report.repetitive_movement.cycles_per_minute} cycles/min on {report.repetitive_movement.primary_joint} ({report.repetitive_movement.frequency_hz} Hz)" if report.repetitive_movement and report.repetitive_movement.is_repetitive else "None detected"},
-            {"#": 7, "Parameter": "Number of Trips", "Extracted Value": f"{report.trip_count_result.trip_count if report.trip_count_result else 0} trips ({report.trip_count_result.total_distance_pixels if report.trip_count_result else 0} px travel)"},
-            {"#": 8, "Parameter": "Tools/Equipment Used", "Extracted Value": ", ".join([t.tool_name for t in report.tools_used]) if report.tools_used else "None detected"},
-            {"#": 9, "Parameter": "Posture & Angles", "Extracted Value": f"Avg Trunk Flexion: {report.posture_summary.avg_trunk_flexion}° | Max: {report.posture_summary.max_trunk_flexion}°" if report.posture_summary else "N/A"},
-            {"#": 10, "Parameter": "Continuous Work Duration", "Extracted Value": f"Longest: {report.longest_work_bout}s | Avg: {report.avg_work_bout}s ({len(report.work_bouts)} bouts)"},
-            {"#": 11, "Parameter": "Rest Duration", "Extracted Value": f"Total Rest: {report.total_rest_duration}s across {report.rest_count} rest periods"},
+            {"#": "2", "Parameter": "Standing Duration", "Extracted Value": f"{report.standing_duration}s ({round(report.standing_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
+            {"#": "3", "Parameter": "Bending Duration", "Extracted Value": f"{report.bending_duration}s ({round(report.bending_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
+            {"#": "4", "Parameter": "Walking Duration", "Extracted Value": f"{report.walking_duration}s ({round(report.walking_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
+            {"#": "5", "Parameter": "Load Carried", "Extracted Value": f"{report.total_load_events} carrying events detected"},
+            {"#": "6", "Parameter": "Repetitive Movement", "Extracted Value": f"{report.repetitive_movement.cycles_per_minute} cycles/min on {report.repetitive_movement.primary_joint} ({report.repetitive_movement.frequency_hz} Hz)" if report.repetitive_movement and report.repetitive_movement.is_repetitive else "None detected"},
+            {"#": "7", "Parameter": "Number of Trips", "Extracted Value": f"{report.trip_count_result.trip_count if report.trip_count_result else 0} trips ({report.trip_count_result.total_distance_pixels if report.trip_count_result else 0} px travel)"},
+            {"#": "8", "Parameter": "Tools/Equipment Used", "Extracted Value": ", ".join([t.tool_name for t in report.tools_used]) if report.tools_used else "None detected"},
+            {"#": "9", "Parameter": "Posture & Angles", "Extracted Value": f"Avg Trunk Flexion: {report.posture_summary.avg_trunk_flexion}° | Max: {report.posture_summary.max_trunk_flexion}°" if report.posture_summary else "N/A"},
+            {"#": "10", "Parameter": "Continuous Work Duration", "Extracted Value": f"Longest: {report.longest_work_bout}s | Avg: {report.avg_work_bout}s ({len(report.work_bouts)} bouts)"},
+            {"#": "11", "Parameter": "Rest Duration", "Extracted Value": f"Total Rest: {report.total_rest_duration}s across {report.rest_count} rest periods"},
         ]
         
         st.dataframe(pd.DataFrame(param_data), use_container_width=True, hide_index=True)

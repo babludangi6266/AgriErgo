@@ -134,26 +134,29 @@ class PDFReportGenerator:
 
         # ── Per-Worker Analysis Sections ──
         for wr in worker_reports:
-            elements.append(Paragraph(f"2. Worker #{wr.worker_id} Assessment Summary", section_heading))
+            task_title = getattr(wr, 'classified_task', 'General Agricultural Work') or 'General Agricultural Work'
+            elements.append(Paragraph(f"2. Worker #{wr.worker_id} Assessment — <i>{task_title}</i>", section_heading))
 
             # Ergonomic & Drudgery Scorecard Cards
             rula = getattr(wr, 'rula_score', None) or 1
             reba = wr.reba_score or 1
             adi = getattr(wr, 'drudgery_index', 0.0) or 0.0
             adi_cat = getattr(wr, 'drudgery_category', 'Low Drudgery') or 'Low Drudgery'
+            l5s1 = getattr(wr, 'l5s1_compression_n', 0.0) or 0.0
+            rwl = getattr(wr, 'niosh_rwl_kg', 0.0) or 0.0
 
             card_data = [
                 [
-                    Paragraph("<b>REBA Score (Whole Body):</b>", body_style),
+                    Paragraph("<b>REBA Score (Body):</b>", body_style),
                     Paragraph(f"<b>{reba}</b> ({wr.reba_risk_level or 'N/A'})", bold_body),
-                    Paragraph("<b>RULA Score (Upper Limb):</b>", body_style),
+                    Paragraph("<b>RULA Score (Upper):</b>", body_style),
                     Paragraph(f"<b>{rula}</b>", bold_body),
                 ],
                 [
                     Paragraph("<b>Drudgery Index (ADI):</b>", body_style),
                     Paragraph(f"<b>{adi} / 100</b> ({adi_cat})", bold_body),
-                    Paragraph("<b>Tracked Duration:</b>", body_style),
-                    Paragraph(f"{wr.total_tracked_time}s", body_style),
+                    Paragraph("<b>L5/S1 Compression:</b>", body_style),
+                    Paragraph(f"<b>{l5s1} N</b> ({'EXCEEDED 3.4kN' if l5s1 > 3400 else 'Safe Limit'})", bold_body),
                 ],
             ]
             card_table = Table(card_data, colWidths=[140, 120, 140, 120])

@@ -104,6 +104,17 @@ class WorkerReport:
     drudgery_recommendations: List[str] = field(default_factory=list)
     fatigue_level: Optional[float] = None
 
+    # NIOSH & Spinal Compression Metrics
+    niosh_rwl_kg: Optional[float] = None
+    niosh_lifting_index: Optional[float] = None
+    l5s1_compression_n: Optional[float] = None
+    niosh_risk_assessment: Optional[str] = None
+
+    # Task Auto-Classification
+    classified_task: Optional[str] = None
+    task_confidence: Optional[float] = None
+    task_hazard_profile: Optional[str] = None
+
 
 class ParameterAggregator:
     """

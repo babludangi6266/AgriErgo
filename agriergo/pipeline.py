@@ -36,6 +36,8 @@ from agriergo.analytics.parameter_aggregator import ParameterAggregator, WorkerR
 from agriergo.analytics.ergonomic_scorer import ErgonomicScorer, REBAScore
 from agriergo.analytics.rula_scorer import RULAScorer, RULAScore
 from agriergo.analytics.drudgery_index import DrudgeryCalculator, DrudgeryResult
+from agriergo.analytics.niosh_calculator import NIOSHCalculator, NIOSHResult
+from agriergo.interpretation.task_classifier import TaskClassifier, TaskClassificationResult
 from agriergo.analytics.report_generator import ReportGenerator
 from agriergo.analytics.pdf_generator import PDFReportGenerator
 from agriergo.perception.annotator import VideoAnnotator
@@ -52,6 +54,7 @@ class PipelineResult:
     json_report: Optional[Dict[str, Any]] = None
     csv_report: Optional[str] = None
     pdf_report: Optional[bytes] = None
+    annotated_video_bytes: Optional[bytes] = None
 
 
 class AgriErgoPipeline:
@@ -72,12 +75,14 @@ class AgriErgoPipeline:
         self.repetition_detector = RepetitionDetector()
         self.activity_segmenter = ActivitySegmenter()
         self.trip_counter = TripCounter()
+        self.task_classifier = TaskClassifier()
 
         # Initialize analytics components
         self.aggregator = ParameterAggregator()
         self.scorer = ErgonomicScorer()
         self.rula_scorer = RULAScorer()
         self.drudgery_calculator = DrudgeryCalculator()
+        self.niosh_calculator = NIOSHCalculator()
 
         # Initialize reporting components
         self.report_gen = ReportGenerator()
@@ -301,6 +306,33 @@ class AgriErgoPipeline:
                 report.drudgery_category = drudgery_res.drudgery_category
                 report.drudgery_recommendations = drudgery_res.recommendations
                 report.fatigue_level = drudgery_res.estimated_fatigue_level
+
+            # Compute NIOSH & Lumbar Compression Force
+            if hasattr(self, 'niosh_calculator'):
+                avg_flexion = report.posture_summary.avg_trunk_flexion if report.posture_summary else 0.0
+                actual_kg = 5.0 if report.total_load_events > 0 else 0.5
+                niosh_res = self.niosh_calculator.calculate(
+                    actual_weight_kg=actual_kg,
+                    trunk_flexion_degrees=float(avg_flexion or 0.0),
+                )
+                report.niosh_rwl_kg = niosh_res.recommended_weight_limit_kg
+                report.niosh_lifting_index = niosh_res.lifting_index
+                report.l5s1_compression_n = niosh_res.l5s1_compression_force_n
+                report.niosh_risk_assessment = niosh_res.risk_assessment
+
+            # Agricultural Task Auto-Classification
+            if hasattr(self, 'task_classifier'):
+                dist = report.posture_summary.posture_distribution if report.posture_summary else {}
+                task_res = self.task_classifier.classify_task(
+                    posture_distribution=dist,
+                    cycles_per_minute=rep_result.cycles_per_minute if rep_result else 0.0,
+                    repetitive_joint=rep_result.primary_joint if rep_result else None,
+                    detected_tools=[t.tool_name for t in report.tools_used],
+                    total_load_events=report.total_load_events,
+                )
+                report.classified_task = task_res.primary_task
+                report.task_confidence = task_res.confidence
+                report.task_hazard_profile = task_res.ergonomic_hazard_profile
 
             worker_reports.append(report)
 

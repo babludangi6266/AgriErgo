@@ -220,6 +220,17 @@ class ReportGenerator:
                     "estimated_fatigue_level": float(getattr(wr, 'fatigue_level', 0.0) or 0.0),
                     "recommendations": getattr(wr, 'drudgery_recommendations', []),
                 },
+                "niosh_assessment": {
+                    "rwl_kg": float(getattr(wr, 'niosh_rwl_kg', 0.0) or 0.0),
+                    "lifting_index": float(getattr(wr, 'niosh_lifting_index', 0.0) or 0.0),
+                    "l5s1_compression_n": float(getattr(wr, 'l5s1_compression_n', 0.0) or 0.0),
+                    "risk_assessment": str(getattr(wr, 'niosh_risk_assessment', 'N/A')),
+                },
+                "task_classification": {
+                    "primary_task": str(getattr(wr, 'classified_task', 'General Agricultural Work')),
+                    "confidence": float(getattr(wr, 'task_confidence', 0.6) or 0.6),
+                    "hazard_profile": str(getattr(wr, 'task_hazard_profile', 'General Physical Fatigue')),
+                },
                 "activity_timeline": [
                     {
                         "activity": str(bout.activity.value),
