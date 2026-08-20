@@ -170,11 +170,17 @@ if uploaded_file is not None:
         pipeline = get_pipeline()
         
         with st.spinner(f"Processing video ({speed_mode})..."):
-            result = pipeline.process(
-                video_path,
-                progress_callback=update_progress,
-                speed_mode=speed_mode,
-            )
+            try:
+                result = pipeline.process(
+                    video_path,
+                    progress_callback=update_progress,
+                    speed_mode=speed_mode,
+                )
+            except TypeError:
+                result = pipeline.process(
+                    video_path,
+                    progress_callback=update_progress,
+                )
 
         st.session_state["pipeline_result"] = result
         st.success(f"⚡ Analysis complete in {result.processing_time_seconds}s!")

@@ -93,6 +93,7 @@ class AgriErgoPipeline:
         video_path: str,
         progress_callback: Optional[Callable[[float, str], None]] = None,
         speed_mode: str = "Balanced Fast",
+        **kwargs,
     ) -> PipelineResult:
         """
         Process a video end-to-end with high-speed CPU optimization.
