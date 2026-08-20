@@ -30,6 +30,7 @@ class DrudgeryResult:
     load_strain_score: float            # 0–100
     estimated_fatigue_level: float      # 0–100 % accumulated fatigue
     recommendations: List[str]          # Actionable intervention recommendations
+    minute_fatigue_series: List[float] = field(default_factory=list) # Minute-by-minute fatigue values (%)
 
 
 class DrudgeryCalculator:
@@ -107,6 +108,15 @@ class DrudgeryCalculator:
         # Fatigue level estimation
         fatigue = float(round(np.clip(adi * 0.85 + (work_bout_mins * 0.5), 0.0, 100.0), 1))
 
+        # Minute-by-minute fatigue curve over tracked session (e.g. 1 to 10 minutes)
+        total_mins = max(1, int(np.ceil(total_tracked_seconds / 60.0)))
+        minute_fatigue_series = []
+        for m in range(1, total_mins + 1):
+            # Accumulation curve formula with asymptotic saturation at overall fatigue level
+            progress = m / total_mins
+            f_m = float(round(fatigue * (1.0 - np.exp(-2.5 * progress)), 1))
+            minute_fatigue_series.append(f_m)
+
         # Generate Actionable Recommendations
         recs = []
         if postural_stress > 50:
@@ -129,4 +139,5 @@ class DrudgeryCalculator:
             load_strain_score=round(load_strain, 1),
             estimated_fatigue_level=fatigue,
             recommendations=recs,
+            minute_fatigue_series=minute_fatigue_series,
         )

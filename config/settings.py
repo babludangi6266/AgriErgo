@@ -28,11 +28,23 @@ POSE_MODEL = "yolov8n-pose.pt"        # Nano variant — CPU-friendly
 DETECTION_MODEL = "yolov8n.pt"         # COCO-pretrained object detector
 TRACKER_CONFIG = "bytetrack.yaml"      # ByteTrack for persistent IDs
 
-# ──────────────────────────────────────────────
-# Video Processing
-# ──────────────────────────────────────────────
-FRAME_SAMPLE_FPS = 5                   # Sample 5 frames per second
+FRAME_SAMPLE_FPS = 5                   # Sample 5 frames per second default
+MAX_OCCLUSION_INTERPOLATION_FRAMES = 15 # Up to 15 sampled frames (6 seconds) interpolation
 SUPPORTED_FORMATS = {".mp4", ".avi", ".mov", ".mkv", ".wmv"}
+
+def get_adaptive_fps(duration_seconds: float) -> float:
+    """
+    Auto-tune sample FPS for long agricultural videos (10 mins+)
+    to maintain fast processing and low memory overhead while keeping high accuracy.
+    """
+    if duration_seconds < 120:       # < 2 minutes
+        return 5.0
+    elif duration_seconds < 300:     # 2 - 5 minutes
+        return 3.0
+    elif duration_seconds < 900:     # 5 - 15 minutes (10-minute video range)
+        return 2.0
+    else:                            # > 15 minutes
+        return 1.0
 
 # ──────────────────────────────────────────────
 # Confidence Thresholds

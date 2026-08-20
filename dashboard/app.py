@@ -292,6 +292,25 @@ if "pipeline_result" in st.session_state:
                 fig_bar.update_yaxes(autorange="reversed")
                 st.plotly_chart(fig_bar, use_container_width=True)
 
+        # ── 10-Minute Fatigue Progression Trend Line Chart ──
+        fatigue_series = getattr(report, 'minute_fatigue_series', [])
+        if fatigue_series:
+            st.markdown("#### 📈 Cumulative Ergonomic Fatigue Curve (0 – 10+ Minutes)")
+            fatigue_df = pd.DataFrame({
+                "Minute": [f"Min {i+1}" for i in range(len(fatigue_series))],
+                "Fatigue Level (%)": fatigue_series
+            })
+            fig_fatigue = px.line(
+                fatigue_df,
+                x="Minute",
+                y="Fatigue Level (%)",
+                markers=True,
+                line_shape="spline",
+                color_discrete_sequence=["#EF4444"]
+            )
+            fig_fatigue.update_yaxes(range=[0, 100])
+            st.plotly_chart(fig_fatigue, use_container_width=True)
+
         # Export Buttons
         st.markdown("### 📥 Download Assessment Reports")
         ex_col1, ex_col2, ex_col3 = st.columns(3)

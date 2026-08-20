@@ -13,7 +13,9 @@ from typing import Generator, Tuple, Optional
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-from config.settings import FRAME_SAMPLE_FPS, SUPPORTED_FORMATS
+from config.settings import (
+    FRAME_SAMPLE_FPS, SUPPORTED_FORMATS, get_adaptive_fps
+)
 
 
 @dataclass
@@ -83,24 +85,27 @@ class VideoProcessor:
 
         return self._metadata
 
+
+
     def sample_frames(
-        self, fps: float = FRAME_SAMPLE_FPS
+        self, fps: Optional[float] = None
     ) -> Generator[Tuple[int, float, np.ndarray], None, None]:
         """
-        Yield frames sampled at the specified effective FPS.
+        Yield frames sampled at the specified or adaptive effective FPS.
 
         Args:
-            fps: Target sampling rate (frames per second).
-                 If higher than native FPS, every frame is yielded.
+            fps: Target sampling rate (frames per second). If None, uses get_adaptive_fps().
 
         Yields:
             Tuple of (frame_index, timestamp_seconds, frame_bgr_array)
         """
         meta = self.metadata
-        if fps >= meta.fps:
+        effective_fps = fps if fps is not None else get_adaptive_fps(meta.duration_seconds)
+
+        if effective_fps >= meta.fps:
             frame_interval = 1
         else:
-            frame_interval = int(round(meta.fps / fps))
+            frame_interval = max(1, int(round(meta.fps / effective_fps)))
 
         cap = cv2.VideoCapture(str(self.video_path))
         if not cap.isOpened():

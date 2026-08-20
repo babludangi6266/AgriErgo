@@ -103,6 +103,7 @@ class WorkerReport:
     drudgery_category: Optional[str] = None
     drudgery_recommendations: List[str] = field(default_factory=list)
     fatigue_level: Optional[float] = None
+    minute_fatigue_series: List[float] = field(default_factory=list)
 
     # NIOSH & Spinal Compression Metrics
     niosh_rwl_kg: Optional[float] = None

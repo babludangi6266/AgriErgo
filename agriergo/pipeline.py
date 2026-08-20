@@ -306,6 +306,7 @@ class AgriErgoPipeline:
                 report.drudgery_category = drudgery_res.drudgery_category
                 report.drudgery_recommendations = drudgery_res.recommendations
                 report.fatigue_level = drudgery_res.estimated_fatigue_level
+                report.minute_fatigue_series = drudgery_res.minute_fatigue_series
 
             # Compute NIOSH & Lumbar Compression Force
             if hasattr(self, 'niosh_calculator'):
