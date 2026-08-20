@@ -192,17 +192,23 @@ if "pipeline_result" in st.session_state:
         st.subheader(f"Detailed Analysis for Worker #{selected_worker_id}")
 
         # Worker Overview Cards
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
-            st.metric("Total Tracked Time", f"{report.total_tracked_time}s")
+            st.metric("Tracked Time", f"{report.total_tracked_time}s")
         with c2:
-            st.metric("Dominant Posture", report.posture_summary.dominant_posture.value.title() if report.posture_summary else "N/A")
+            st.metric("REBA Score (Body)", f"{report.reba_score or 'N/A'}")
         with c3:
-            score_val = str(report.reba_score) if report.reba_score else "N/A"
-            risk_lvl = report.reba_risk_level or "N/A"
-            st.metric("REBA Risk Score", f"{score_val} ({risk_lvl})")
+            st.metric("RULA Score (Upper)", f"{getattr(report, 'rula_score', 'N/A') or 'N/A'}")
         with c4:
-            st.metric("Trip Count", report.trip_count_result.trip_count if report.trip_count_result else 0)
+            adi_val = getattr(report, 'drudgery_index', 0.0) or 0.0
+            st.metric("Drudgery Index (ADI)", f"{adi_val} / 100")
+        with c5:
+            st.metric("Fatigue Level", f"{getattr(report, 'fatigue_level', 0.0) or 0.0}%")
+
+        # Drudgery Recommendations Callout
+        recs = getattr(report, 'drudgery_recommendations', [])
+        if recs:
+            st.info(f"💡 **Ergonomic Intervention Recommendation:** {recs[0]}")
 
         # ── 11 Parameters Display Table ──
         st.markdown("### 📋 The 11 Ergonomic & Drudgery Parameters")
@@ -262,19 +268,27 @@ if "pipeline_result" in st.session_state:
                 st.plotly_chart(fig_bar, use_container_width=True)
 
         # Export Buttons
-        st.markdown("### 📥 Download Reports")
-        ex_col1, ex_col2 = st.columns(2)
+        st.markdown("### 📥 Download Assessment Reports")
+        ex_col1, ex_col2, ex_col3 = st.columns(3)
         with ex_col1:
             st.download_button(
-                "Download JSON Report",
+                "📄 Download Publication PDF Report",
+                data=result.pdf_report if result.pdf_report else b"",
+                file_name=f"{Path(result.video_metadata.filename).stem}_report.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+        with ex_col2:
+            st.download_button(
+                "📊 Download JSON Report",
                 data=json.dumps(result.json_report, indent=2),
                 file_name=f"{Path(result.video_metadata.filename).stem}_report.json",
                 mime="application/json",
                 use_container_width=True
             )
-        with ex_col2:
+        with ex_col3:
             st.download_button(
-                "Download CSV Summary",
+                "📈 Download CSV Summary",
                 data=result.csv_report,
                 file_name=f"{Path(result.video_metadata.filename).stem}_report.csv",
                 mime="text/csv",

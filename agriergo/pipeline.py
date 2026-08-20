@@ -34,7 +34,11 @@ from agriergo.interpretation.trip_counter import TripCounter
 # Analytics
 from agriergo.analytics.parameter_aggregator import ParameterAggregator, WorkerReport
 from agriergo.analytics.ergonomic_scorer import ErgonomicScorer, REBAScore
+from agriergo.analytics.rula_scorer import RULAScorer, RULAScore
+from agriergo.analytics.drudgery_index import DrudgeryCalculator, DrudgeryResult
 from agriergo.analytics.report_generator import ReportGenerator
+from agriergo.analytics.pdf_generator import PDFReportGenerator
+from agriergo.perception.annotator import VideoAnnotator
 
 
 @dataclass
@@ -47,42 +51,37 @@ class PipelineResult:
     workers_detected: int
     json_report: Optional[Dict[str, Any]] = None
     csv_report: Optional[str] = None
+    pdf_report: Optional[bytes] = None
 
 
 class AgriErgoPipeline:
     """
     End-to-end video processing pipeline.
-
-    Workflow:
-    1. INGEST: Open video, extract metadata
-    2. PROCESS FRAMES: For each sampled frame:
-       - Track persons with persistent IDs
-       - Detect objects (tools, loads)
-       - Compute joint angles
-       - Classify posture
-       - Accumulate per-worker time-series data
-    3. ANALYZE: After all frames:
-       - Segment activities into bouts
-       - Detect repetitive motions
-       - Count trips
-       - Aggregate 11 parameters
-       - Compute REBA scores
-    4. REPORT: Generate JSON/CSV output
     """
 
     def __init__(self, sample_fps: float = FRAME_SAMPLE_FPS):
         self.sample_fps = sample_fps
 
-        # Initialize components
+        # Initialize perception components
         self.tracker = PersonTracker()
         self.object_detector = ObjectDetector()
+        self.annotator = VideoAnnotator()
+
+        # Initialize interpretation components
         self.posture_classifier = PostureClassifier()
         self.repetition_detector = RepetitionDetector()
         self.activity_segmenter = ActivitySegmenter()
         self.trip_counter = TripCounter()
+
+        # Initialize analytics components
         self.aggregator = ParameterAggregator()
         self.scorer = ErgonomicScorer()
+        self.rula_scorer = RULAScorer()
+        self.drudgery_calculator = DrudgeryCalculator()
+
+        # Initialize reporting components
         self.report_gen = ReportGenerator()
+        self.pdf_gen = PDFReportGenerator()
 
     def process(
         self,
@@ -271,6 +270,38 @@ class AgriErgoPipeline:
                 report.reba_score = overall_reba.final_score
                 report.reba_risk_level = overall_reba.risk_level
 
+            # Compute RULA score
+            if hasattr(self, 'rula_scorer') and worker_reba_scores[wid]:
+                # Approximate RULA from frame joint angles
+                rula_scores = [
+                    self.rula_scorer.score_frame(
+                        JointAngles(trunk_flexion=tf, avg_hip_angle=ha),
+                        is_repetitive=rep_result.is_repetitive if rep_result else False
+                    )
+                    for tf, ha in zip(worker_trunk_flexions[wid], worker_hip_angles[wid])
+                ]
+                overall_rula = self.rula_scorer.score_worker_overall(rula_scores)
+                report.rula_score = overall_rula.final_score
+                report.rula_action_level = overall_rula.action_level
+
+            # Compute Agricultural Drudgery Index (ADI)
+            if hasattr(self, 'drudgery_calculator'):
+                dist = report.posture_summary.posture_distribution if report.posture_summary else {}
+                drudgery_res = self.drudgery_calculator.calculate(
+                    reba_score=float(report.reba_score or 1),
+                    rula_score=float(getattr(report, 'rula_score', 1) or 1),
+                    posture_distribution=dist,
+                    cycles_per_minute=rep_result.cycles_per_minute if rep_result else 0.0,
+                    total_tracked_seconds=report.total_tracked_time,
+                    longest_work_bout_seconds=report.longest_work_bout,
+                    total_rest_seconds=report.total_rest_duration,
+                    load_events_count=report.total_load_events,
+                )
+                report.drudgery_index = drudgery_res.drudgery_index
+                report.drudgery_category = drudgery_res.drudgery_category
+                report.drudgery_recommendations = drudgery_res.recommendations
+                report.fatigue_level = drudgery_res.estimated_fatigue_level
+
             worker_reports.append(report)
 
         self._report_progress(progress_callback, 0.90, "Generating reports...")
@@ -286,8 +317,9 @@ class AgriErgoPipeline:
         json_report = self.report_gen.generate_json(
             worker_reports, metadata, json_path
         )
-        csv_report = self.report_gen.generate_csv(
-            worker_reports, metadata, csv_path
+        pdf_path = str(RESULTS_DIR / f"{video_name}_report.pdf")
+        pdf_report = self.pdf_gen.generate_pdf(
+            worker_reports, metadata, pdf_path
         )
 
         elapsed = round(time.time() - start_time, 2)
@@ -305,6 +337,7 @@ class AgriErgoPipeline:
             workers_detected=len(worker_reports),
             json_report=json_report,
             csv_report=csv_report,
+            pdf_report=pdf_report,
         )
 
     @staticmethod

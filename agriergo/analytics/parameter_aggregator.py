@@ -94,9 +94,15 @@ class WorkerReport:
     # Activity timeline
     activity_bouts: List[ActivityBout] = field(default_factory=list)
 
-    # REBA score (computed separately)
-    reba_score: Optional[float] = None
+    # Advanced Risk & Drudgery Metrics
+    reba_score: Optional[int] = None
     reba_risk_level: Optional[str] = None
+    rula_score: Optional[int] = None
+    rula_action_level: Optional[str] = None
+    drudgery_index: Optional[float] = None
+    drudgery_category: Optional[str] = None
+    drudgery_recommendations: List[str] = field(default_factory=list)
+    fatigue_level: Optional[float] = None
 
 
 class ParameterAggregator:

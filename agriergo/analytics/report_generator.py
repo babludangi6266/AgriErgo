@@ -210,7 +210,15 @@ class ReportGenerator:
                 },
                 "ergonomic_score": {
                     "reba_score": int(wr.reba_score) if wr.reba_score is not None else None,
-                    "risk_level": str(wr.reba_risk_level) if wr.reba_risk_level is not None else None,
+                    "reba_risk_level": str(wr.reba_risk_level) if wr.reba_risk_level is not None else None,
+                    "rula_score": int(wr.rula_score) if getattr(wr, 'rula_score', None) is not None else None,
+                    "rula_action_level": str(getattr(wr, 'rula_action_level', None)) if getattr(wr, 'rula_action_level', None) is not None else None,
+                },
+                "drudgery_assessment": {
+                    "drudgery_index": float(getattr(wr, 'drudgery_index', 0.0) or 0.0),
+                    "drudgery_category": str(getattr(wr, 'drudgery_category', 'N/A')),
+                    "estimated_fatigue_level": float(getattr(wr, 'fatigue_level', 0.0) or 0.0),
+                    "recommendations": getattr(wr, 'drudgery_recommendations', []),
                 },
                 "activity_timeline": [
                     {
