@@ -32,6 +32,10 @@ FRAME_SAMPLE_FPS = 5                   # Sample 5 frames per second default
 MAX_OCCLUSION_INTERPOLATION_FRAMES = 15 # Up to 15 sampled frames (6 seconds) interpolation
 SUPPORTED_FORMATS = {".mp4", ".avi", ".mov", ".mkv", ".wmv"}
 
+# High-Speed Optimization Settings
+FAST_YOLO_IMGSZ = 320                   # 320px downscaling for 4x faster CPU neural network execution
+OBJECT_DETECTION_STRIDE = 5             # Run object detector every 5th frame to cut 40% CPU inference time
+
 # ISO 11226 Cumulative Ergonomic Shift Exposure Limits
 ISO11226_SEVERE_STOOPING_ANGLE = 60.0    # Bending angle >60 deg is severe
 ISO11226_MAX_CUMULATIVE_STOOPING_MINS = 4.0 # Sustained >4 mins per half hour triggers hazard warning

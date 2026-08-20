@@ -14,7 +14,7 @@ from collections import defaultdict
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from config.settings import FRAME_SAMPLE_FPS, RESULTS_DIR
+from config.settings import FRAME_SAMPLE_FPS, RESULTS_DIR, OBJECT_DETECTION_STRIDE
 
 # Perception
 from agriergo.perception.video_processor import VideoProcessor, VideoMetadata
@@ -138,7 +138,7 @@ class AgriErgoPipeline:
 
             # ── Detect objects (run on every Nth frame to save compute) ──
             detected_objects: List[DetectedObject] = []
-            if frames_processed % 3 == 0:  # Object detection every 3rd sampled frame
+            if frames_processed % OBJECT_DETECTION_STRIDE == 0:  # Object detection every 5th sampled frame
                 detected_objects = self.object_detector.detect(frame)
 
             # ── Process each detected person ──

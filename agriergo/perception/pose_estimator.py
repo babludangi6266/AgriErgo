@@ -12,7 +12,7 @@ from pathlib import Path
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-from config.settings import POSE_MODEL, POSE_CONFIDENCE
+from config.settings import POSE_MODEL, POSE_CONFIDENCE, FAST_YOLO_IMGSZ
 
 
 @dataclass
@@ -53,7 +53,7 @@ class PoseEstimator:
         Returns:
             List of PersonKeypoints for each detected person.
         """
-        results = self.model(frame, verbose=False, conf=self.confidence)
+        results = self.model(frame, verbose=False, conf=self.confidence, imgsz=FAST_YOLO_IMGSZ)
 
         persons = []
         for result in results:

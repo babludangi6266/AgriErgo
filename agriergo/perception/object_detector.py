@@ -17,6 +17,7 @@ from config.settings import (
     DETECTION_MODEL,
     DETECTION_CONFIDENCE,
     FARM_RELEVANT_COCO_CLASSES,
+    FAST_YOLO_IMGSZ,
 )
 
 
@@ -58,7 +59,7 @@ class ObjectDetector:
         Returns:
             List of DetectedObject for farm-relevant classes.
         """
-        results = self.model(frame, verbose=False, conf=self.confidence)
+        results = self.model(frame, verbose=False, conf=self.confidence, imgsz=FAST_YOLO_IMGSZ)
 
         objects = []
         for result in results:

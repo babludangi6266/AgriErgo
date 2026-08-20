@@ -113,16 +113,18 @@ class VideoProcessor:
 
         frame_idx = 0
         try:
-            while True:
+            while frame_idx < meta.total_frames:
+                if frame_interval > 1:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+
                 ret, frame = cap.read()
-                if not ret:
+                if not ret or frame is None:
                     break
 
-                if frame_idx % frame_interval == 0:
-                    timestamp = frame_idx / meta.fps if meta.fps > 0 else 0.0
-                    yield frame_idx, round(timestamp, 3), frame
+                timestamp = frame_idx / meta.fps if meta.fps > 0 else 0.0
+                yield frame_idx, round(timestamp, 3), frame
 
-                frame_idx += 1
+                frame_idx += frame_interval
         finally:
             cap.release()
 
