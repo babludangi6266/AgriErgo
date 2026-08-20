@@ -41,6 +41,7 @@ from agriergo.interpretation.task_classifier import TaskClassifier, TaskClassifi
 from agriergo.analytics.report_generator import ReportGenerator
 from agriergo.analytics.pdf_generator import PDFReportGenerator
 from agriergo.perception.annotator import VideoAnnotator
+from agriergo.perception.tracklet_stitcher import TrackletStitcher
 
 
 @dataclass
@@ -51,6 +52,7 @@ class PipelineResult:
     processing_time_seconds: float
     frames_processed: int
     workers_detected: int
+    peak_concurrent_workers: int = 0
     json_report: Optional[Dict[str, Any]] = None
     csv_report: Optional[str] = None
     pdf_report: Optional[bytes] = None
@@ -239,33 +241,71 @@ class AgriErgoPipeline:
                 )
 
         # ════════════════════════════════════════
-        # PHASE 3: ANALYZE
+        # PHASE 3: ANALYZE & STITCH TRACKLETS
         # ════════════════════════════════════════
-        self._report_progress(progress_callback, 0.72, "Analyzing activities...")
+        self._report_progress(progress_callback, 0.70, "Consolidating worker trajectories...")
+
+        # Spatial-temporal tracklet stitching to merge fragmented IDs
+        stitcher = TrackletStitcher()
+        raw_to_unified, peak_concurrency = stitcher.stitch_tracklets(worker_trajectories)
+
+        # Merge accumulators under unified worker IDs
+        unified_frame_records: Dict[int, List[FrameRecord]] = defaultdict(list)
+        unified_trajectories: Dict[int, List[Tuple[float, float, float]]] = defaultdict(list)
+        unified_tool_detections: Dict[int, Dict[str, List[float]]] = defaultdict(lambda: defaultdict(list))
+        unified_load_detections: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+        unified_trunk_flexions: Dict[int, List[Optional[float]]] = defaultdict(list)
+        unified_hip_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
+        unified_elbow_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
+        unified_wrist_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
+        unified_shoulder_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
+        unified_reba_scores: Dict[int, List[REBAScore]] = defaultdict(list)
+
+        for raw_id in worker_frame_records.keys():
+            unified_id = raw_to_unified.get(raw_id, raw_id)
+            unified_frame_records[unified_id].extend(worker_frame_records[raw_id])
+            unified_trajectories[unified_id].extend(worker_trajectories[raw_id])
+            for tool_name, ts_list in worker_tool_detections[raw_id].items():
+                unified_tool_detections[unified_id][tool_name].extend(ts_list)
+            unified_load_detections[unified_id].extend(worker_load_detections[raw_id])
+            unified_trunk_flexions[unified_id].extend(worker_trunk_flexions[raw_id])
+            unified_hip_angles[unified_id].extend(worker_hip_angles[raw_id])
+            unified_elbow_angles[unified_id].extend(worker_elbow_angles[raw_id])
+            unified_wrist_angles[unified_id].extend(worker_wrist_angles[raw_id])
+            unified_shoulder_angles[unified_id].extend(worker_shoulder_angles[raw_id])
+            unified_reba_scores[unified_id].extend(worker_reba_scores[raw_id])
+
+        # Sort merged records chronologically for each unified worker
+        for uid in unified_frame_records:
+            unified_frame_records[uid].sort(key=lambda r: r.timestamp)
+            unified_trajectories[uid].sort(key=lambda t: t[0])
+            unified_load_detections[uid].sort(key=lambda d: d["timestamp"])
+
+        self._report_progress(progress_callback, 0.75, "Analyzing activities & ergonomic scores...")
 
         worker_reports: List[WorkerReport] = []
 
-        for wid in sorted(worker_frame_records.keys()):
-            records = worker_frame_records[wid]
-            if len(records) < 5:
-                continue  # Skip workers seen in very few frames
+        for wid in sorted(unified_frame_records.keys()):
+            records = unified_frame_records[wid]
+            if len(records) < 3:
+                continue  # Skip fleeting noise detections
 
             # Segment activities
             bouts = self.activity_segmenter.segment(wid, records)
 
             # Detect multi-joint repetitive motions (elbow, wrist, shoulder, trunk)
             multi_joint_series = {
-                "elbow": np.array([a if a is not None else np.nan for a in worker_elbow_angles[wid]]),
-                "wrist": np.array([a if a is not None else np.nan for a in worker_wrist_angles[wid]]),
-                "shoulder": np.array([a if a is not None else np.nan for a in worker_shoulder_angles[wid]]),
-                "trunk": np.array([a if a is not None else np.nan for a in worker_trunk_flexions[wid]]),
+                "elbow": np.array([a if a is not None else np.nan for a in unified_elbow_angles[wid]]),
+                "wrist": np.array([a if a is not None else np.nan for a in unified_wrist_angles[wid]]),
+                "shoulder": np.array([a if a is not None else np.nan for a in unified_shoulder_angles[wid]]),
+                "trunk": np.array([a if a is not None else np.nan for a in unified_trunk_flexions[wid]]),
             }
             rep_result = self.repetition_detector.detect_multi_joint(
                 multi_joint_series, self.sample_fps
             )
 
             # Count trips
-            trajectory = worker_trajectories[wid]
+            trajectory = unified_trajectories[wid]
             trip_result = self.trip_counter.count_trips(trajectory)
 
             # Aggregate parameters
@@ -274,29 +314,29 @@ class AgriErgoPipeline:
                 activity_bouts=bouts,
                 repetition_result=rep_result,
                 trip_result=trip_result,
-                tool_detections=dict(worker_tool_detections[wid]),
-                load_detections=worker_load_detections[wid],
-                trunk_flexions=worker_trunk_flexions[wid],
-                hip_angles=worker_hip_angles[wid],
+                tool_detections=dict(unified_tool_detections[wid]),
+                load_detections=unified_load_detections[wid],
+                trunk_flexions=unified_trunk_flexions[wid],
+                hip_angles=unified_hip_angles[wid],
             )
 
             # Compute overall REBA score
-            if worker_reba_scores[wid]:
+            if unified_reba_scores[wid]:
                 overall_reba = self.scorer.score_worker_overall(
-                    worker_reba_scores[wid]
+                    unified_reba_scores[wid]
                 )
                 report.reba_score = overall_reba.final_score
                 report.reba_risk_level = overall_reba.risk_level
 
             # Compute RULA score
-            if hasattr(self, 'rula_scorer') and worker_reba_scores[wid]:
+            if hasattr(self, 'rula_scorer') and unified_reba_scores[wid]:
                 # Approximate RULA from frame joint angles
                 rula_scores = [
                     self.rula_scorer.score_frame(
                         JointAngles(trunk_flexion=tf, avg_hip_angle=ha),
                         is_repetitive=rep_result.is_repetitive if rep_result else False
                     )
-                    for tf, ha in zip(worker_trunk_flexions[wid], worker_hip_angles[wid])
+                    for tf, ha in zip(unified_trunk_flexions[wid], unified_hip_angles[wid])
                 ]
                 overall_rula = self.rula_scorer.score_worker_overall(rula_scores)
                 report.rula_score = overall_rula.final_score
@@ -383,7 +423,7 @@ class AgriErgoPipeline:
         self._report_progress(
             progress_callback, 1.0,
             f"Complete! Processed {frames_processed} frames in {elapsed}s. "
-            f"Found {len(worker_reports)} workers."
+            f"Found {len(worker_reports)} physical workers (Peak concurrent: {peak_concurrency})."
         )
 
         return PipelineResult(
@@ -392,6 +432,7 @@ class AgriErgoPipeline:
             processing_time_seconds=elapsed,
             frames_processed=frames_processed,
             workers_detected=len(worker_reports),
+            peak_concurrent_workers=peak_concurrency,
             json_report=json_report,
             csv_report=csv_report,
             pdf_report=pdf_report,

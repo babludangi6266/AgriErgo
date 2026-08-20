@@ -196,14 +196,16 @@ if "pipeline_result" in st.session_state:
     st.header("📊 Assessment Results")
 
     # Overview KPI Metrics
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
     with kpi1:
         st.metric("Video Duration", f"{result.video_metadata.duration_seconds}s")
     with kpi2:
-        st.metric("Workers Detected", result.workers_detected)
+        st.metric("Physical Workers", result.workers_detected)
     with kpi3:
-        st.metric("Processed Frames", result.frames_processed)
+        st.metric("Peak Concurrent", getattr(result, 'peak_concurrent_workers', result.workers_detected))
     with kpi4:
+        st.metric("Processed Frames", result.frames_processed)
+    with kpi5:
         st.metric("Processing Time", f"{result.processing_time_seconds}s")
 
     if not result.worker_reports:
