@@ -42,31 +42,29 @@ ISO11226_MAX_CUMULATIVE_STOOPING_MINS = 4.0 # Sustained >4 mins per half hour tr
 
 def get_adaptive_fps(duration_seconds: float, speed_mode: str = "Balanced Fast") -> float:
     """
-    Auto-tune sample FPS for ultra-fast execution (<5-10s) based on video duration and speed mode choice.
+    Auto-tune sample FPS for instant execution (<3-8s) on short, 10-minute, and 30-minute videos.
     """
     if "Lightning" in speed_mode:
-        if duration_seconds < 300:
-            return 1.0
-        elif duration_seconds < 1200:
+        if duration_seconds < 180:        # < 3 mins
             return 0.5
-        else:
+        elif duration_seconds < 900:       # 3 - 15 mins
             return 0.25
+        else:                              # > 15 mins (25-30 min shift)
+            return 0.15                   # ~270 frames total across 30 mins!
     elif "Precision" in speed_mode:
-        if duration_seconds < 300:
-            return 5.0
-        elif duration_seconds < 1200:
+        if duration_seconds < 180:
             return 3.0
+        elif duration_seconds < 900:
+            return 1.5
         else:
-            return 2.0
-    else:  # Balanced Fast default
-        if duration_seconds < 120:       # < 2 minutes
-            return 3.0
-        elif duration_seconds < 300:     # 2 - 5 minutes
-            return 2.0
-        elif duration_seconds < 1200:    # 5 - 20 minutes
             return 1.0
-        else:                            # > 20 minutes
+    else:  # Balanced Fast default
+        if duration_seconds < 180:        # < 3 mins
+            return 1.0
+        elif duration_seconds < 900:       # 3 - 15 mins
             return 0.5
+        else:                              # > 15 mins (25-30 min shift)
+            return 0.25                   # ~450 frames total across 30 mins!
 
 # ──────────────────────────────────────────────
 # Confidence Thresholds

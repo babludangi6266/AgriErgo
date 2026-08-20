@@ -121,8 +121,9 @@ class AgriErgoPipeline:
         # ════════════════════════════════════════
         self._report_progress(progress_callback, 0.0, "Opening video...")
         video_proc = VideoProcessor(video_path)
-        metadata = video_proc.metadata
-        total_frames = video_proc.get_total_sampled_frames(self.sample_fps)
+        from config.settings import get_adaptive_fps
+        effective_fps = get_adaptive_fps(metadata.duration_seconds, speed_mode=speed_mode)
+        total_frames = video_proc.get_total_sampled_frames(effective_fps)
 
         # ════════════════════════════════════════
         # PHASE 2: PROCESS FRAMES
