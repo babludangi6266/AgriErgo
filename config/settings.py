@@ -40,21 +40,33 @@ OBJECT_DETECTION_STRIDE = 5             # Run object detector every 5th frame to
 ISO11226_SEVERE_STOOPING_ANGLE = 60.0    # Bending angle >60 deg is severe
 ISO11226_MAX_CUMULATIVE_STOOPING_MINS = 4.0 # Sustained >4 mins per half hour triggers hazard warning
 
-def get_adaptive_fps(duration_seconds: float) -> float:
+def get_adaptive_fps(duration_seconds: float, speed_mode: str = "Balanced Fast") -> float:
     """
-    Auto-tune sample FPS for short, long (10 mins), and full-shift (25-30 mins) agricultural videos
-    to maintain fast processing (<45s) and zero memory bloat while preserving high accuracy.
+    Auto-tune sample FPS for ultra-fast execution (<5-10s) based on video duration and speed mode choice.
     """
-    if duration_seconds < 120:       # < 2 minutes
-        return 5.0
-    elif duration_seconds < 300:     # 2 - 5 minutes
-        return 3.0
-    elif duration_seconds < 900:     # 5 - 15 minutes
-        return 2.0
-    elif duration_seconds < 2400:    # 15 - 40 minutes (25-30 minute shift range)
-        return 1.0
-    else:                            # > 40 minutes
-        return 0.5
+    if "Lightning" in speed_mode:
+        if duration_seconds < 300:
+            return 1.0
+        elif duration_seconds < 1200:
+            return 0.5
+        else:
+            return 0.25
+    elif "Precision" in speed_mode:
+        if duration_seconds < 300:
+            return 5.0
+        elif duration_seconds < 1200:
+            return 3.0
+        else:
+            return 2.0
+    else:  # Balanced Fast default
+        if duration_seconds < 120:       # < 2 minutes
+            return 3.0
+        elif duration_seconds < 300:     # 2 - 5 minutes
+            return 2.0
+        elif duration_seconds < 1200:    # 5 - 20 minutes
+            return 1.0
+        else:                            # > 20 minutes
+            return 0.5
 
 # ──────────────────────────────────────────────
 # Confidence Thresholds

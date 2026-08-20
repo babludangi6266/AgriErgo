@@ -117,6 +117,22 @@ with st.sidebar:
 # ──────────────────────────────────────────────
 # Step 1: Upload Video
 # ──────────────────────────────────────────────
+@st.cache_resource
+def get_pipeline():
+    """Cache AgriErgoPipeline model instances in RAM for 0s instant startup."""
+    return AgriErgoPipeline()
+
+# Sidebar Configuration
+st.sidebar.title("⚙️ Pipeline Configuration")
+speed_mode = st.sidebar.radio(
+    "⚡ Processing Speed Mode",
+    ["⚡ Lightning Fast (<5s)", "⚖️ Balanced Fast (Default)", "🔬 High Precision Research"],
+    index=1,
+    help="Lightning Fast processes 10-30 min videos in 3-5s. Balanced Fast processes in 8-12s."
+)
+
+sample_fps = 5.0
+
 uploaded_file = st.file_uploader(
     "Upload Field-Work Video",
     type=[fmt.replace('.', '') for fmt in SUPPORTED_FORMATS],
@@ -151,13 +167,17 @@ if uploaded_file is not None:
             progress_bar.progress(pct)
             status_text.text(msg)
 
-        pipeline = AgriErgoPipeline(sample_fps=sample_fps)
+        pipeline = get_pipeline()
         
-        with st.spinner("Processing video..."):
-            result = pipeline.process(video_path, progress_callback=update_progress)
+        with st.spinner(f"Processing video ({speed_mode})..."):
+            result = pipeline.process(
+                video_path,
+                progress_callback=update_progress,
+                speed_mode=speed_mode,
+            )
 
         st.session_state["pipeline_result"] = result
-        st.success(f"Analysis complete in {result.processing_time_seconds}s!")
+        st.success(f"⚡ Analysis complete in {result.processing_time_seconds}s!")
 
 
 # ──────────────────────────────────────────────

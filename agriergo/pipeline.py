@@ -92,18 +92,28 @@ class AgriErgoPipeline:
         self,
         video_path: str,
         progress_callback: Optional[Callable[[float, str], None]] = None,
+        speed_mode: str = "Balanced Fast",
     ) -> PipelineResult:
         """
-        Process a video end-to-end.
+        Process a video end-to-end with high-speed CPU optimization.
 
         Args:
             video_path: Path to the video file.
             progress_callback: Optional callback(progress_fraction, status_message).
+            speed_mode: Speed profile ("Lightning Fast", "Balanced Fast", "High Precision Research").
 
         Returns:
             PipelineResult with all worker reports and metadata.
         """
         start_time = time.time()
+
+        # Multi-thread CPU optimization for PyTorch
+        try:
+            import torch
+            import os
+            torch.set_num_threads(max(1, os.cpu_count() or 4))
+        except Exception:
+            pass
 
         # ════════════════════════════════════════
         # PHASE 1: INGEST
@@ -132,7 +142,7 @@ class AgriErgoPipeline:
 
         frames_processed = 0
 
-        for frame_idx, timestamp, frame in video_proc.sample_frames(self.sample_fps):
+        for frame_idx, timestamp, frame in video_proc.sample_frames(speed_mode=speed_mode):
             # ── Track persons ──
             persons = self.tracker.track(frame)
 

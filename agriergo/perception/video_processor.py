@@ -88,19 +88,20 @@ class VideoProcessor:
 
 
     def sample_frames(
-        self, fps: Optional[float] = None
+        self, fps: Optional[float] = None, speed_mode: str = "Balanced Fast"
     ) -> Generator[Tuple[int, float, np.ndarray], None, None]:
         """
         Yield frames sampled at the specified or adaptive effective FPS.
 
         Args:
             fps: Target sampling rate (frames per second). If None, uses get_adaptive_fps().
+            speed_mode: "Lightning Fast", "Balanced Fast", or "High Precision Research".
 
         Yields:
             Tuple of (frame_index, timestamp_seconds, frame_bgr_array)
         """
         meta = self.metadata
-        effective_fps = fps if fps is not None else get_adaptive_fps(meta.duration_seconds)
+        effective_fps = fps if fps is not None else get_adaptive_fps(meta.duration_seconds, speed_mode=speed_mode)
 
         if effective_fps >= meta.fps:
             frame_interval = 1
