@@ -231,6 +231,10 @@ class ReportGenerator:
                     "confidence": float(getattr(wr, 'task_confidence', 0.6) or 0.6),
                     "hazard_profile": str(getattr(wr, 'task_hazard_profile', 'General Physical Fatigue')),
                 },
+                "shift_assessment": {
+                    "iso_11226_violated": bool(getattr(wr, 'iso_11226_violated', False)),
+                    "iso_11226_message": str(getattr(wr, 'iso_11226_message', '')),
+                },
                 "activity_timeline": [
                     {
                         "activity": str(bout.activity.value),

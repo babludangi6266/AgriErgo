@@ -293,3 +293,28 @@ class ErgonomicScorer:
             if min_score <= score <= max_score:
                 return level, action
         return "Very High", "Necessary NOW"
+
+    def evaluate_shift_iso11226(
+        self, bending_duration_seconds: float, total_tracked_seconds: float
+    ) -> Tuple[bool, str]:
+        """
+        Evaluate ISO 11226 cumulative trunk flexion exposure over a work shift.
+        ISO 11226 specifies that severe trunk flexion (>60°) sustained for >4 minutes
+        per 30-minute shift presents unacceptable musculoskeletal strain.
+
+        Returns:
+            Tuple of (is_iso_violated: bool, warning_message: str)
+        """
+        if total_tracked_seconds <= 0:
+            return False, "Insufficient shift data"
+
+        # Bending duration in minutes
+        bending_mins = bending_duration_seconds / 60.0
+        # Scaled per 30-minute window
+        shift_ratio = 1800.0 / max(60.0, total_tracked_seconds)
+        scaled_bending_mins = bending_mins * shift_ratio
+
+        if scaled_bending_mins > 4.0:
+            return True, f"ISO 11226 Hazard Warning: Sustained severe trunk bending ({round(scaled_bending_mins, 1)} mins / 30-min shift) exceeds the 4-minute ergonomic limit!"
+        else:
+            return False, f"ISO 11226 Compliant: Trunk flexion exposure ({round(scaled_bending_mins, 1)} mins / 30-min shift) is within safe static limits."

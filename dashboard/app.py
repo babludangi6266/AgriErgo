@@ -230,6 +230,10 @@ if "pipeline_result" in st.session_state:
         with c6:
             st.metric("Fatigue Level", f"{getattr(report, 'fatigue_level', 0.0) or 0.0}%")
 
+        # ISO 11226 Ergonomic Shift Hazard Callout Banner
+        if getattr(report, 'iso_11226_violated', False):
+            st.error(f"⚠️ **{getattr(report, 'iso_11226_message', 'ISO 11226 Ergonomic Violation')}**")
+
         # Drudgery Recommendations Callout
         recs = getattr(report, 'drudgery_recommendations', [])
         if recs:

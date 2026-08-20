@@ -335,6 +335,14 @@ class AgriErgoPipeline:
                 report.task_confidence = task_res.confidence
                 report.task_hazard_profile = task_res.ergonomic_hazard_profile
 
+            # Evaluate ISO 11226 Shift Exposure Limits
+            iso_viol, iso_msg = self.scorer.evaluate_shift_iso11226(
+                bending_duration_seconds=report.bending_duration,
+                total_tracked_seconds=report.total_tracked_time,
+            )
+            report.iso_11226_violated = iso_viol
+            report.iso_11226_message = iso_msg
+
             worker_reports.append(report)
 
         self._report_progress(progress_callback, 0.90, "Generating reports...")

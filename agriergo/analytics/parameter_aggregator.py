@@ -116,6 +116,11 @@ class WorkerReport:
     task_confidence: Optional[float] = None
     task_hazard_profile: Optional[str] = None
 
+    # Shift-Level Biomechanics & ISO 11226 Limits
+    iso_11226_violated: bool = False
+    iso_11226_message: Optional[str] = None
+    shift_5min_posture_windows: List[Dict[str, Any]] = field(default_factory=list)
+
 
 class ParameterAggregator:
     """

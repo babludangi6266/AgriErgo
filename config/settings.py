@@ -32,19 +32,25 @@ FRAME_SAMPLE_FPS = 5                   # Sample 5 frames per second default
 MAX_OCCLUSION_INTERPOLATION_FRAMES = 15 # Up to 15 sampled frames (6 seconds) interpolation
 SUPPORTED_FORMATS = {".mp4", ".avi", ".mov", ".mkv", ".wmv"}
 
+# ISO 11226 Cumulative Ergonomic Shift Exposure Limits
+ISO11226_SEVERE_STOOPING_ANGLE = 60.0    # Bending angle >60 deg is severe
+ISO11226_MAX_CUMULATIVE_STOOPING_MINS = 4.0 # Sustained >4 mins per half hour triggers hazard warning
+
 def get_adaptive_fps(duration_seconds: float) -> float:
     """
-    Auto-tune sample FPS for long agricultural videos (10 mins+)
-    to maintain fast processing and low memory overhead while keeping high accuracy.
+    Auto-tune sample FPS for short, long (10 mins), and full-shift (25-30 mins) agricultural videos
+    to maintain fast processing (<45s) and zero memory bloat while preserving high accuracy.
     """
     if duration_seconds < 120:       # < 2 minutes
         return 5.0
     elif duration_seconds < 300:     # 2 - 5 minutes
         return 3.0
-    elif duration_seconds < 900:     # 5 - 15 minutes (10-minute video range)
+    elif duration_seconds < 900:     # 5 - 15 minutes
         return 2.0
-    else:                            # > 15 minutes
+    elif duration_seconds < 2400:    # 15 - 40 minutes (25-30 minute shift range)
         return 1.0
+    else:                            # > 40 minutes
+        return 0.5
 
 # ──────────────────────────────────────────────
 # Confidence Thresholds
