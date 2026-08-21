@@ -44,15 +44,20 @@ class JointAngles:
     # Elbows (shoulder-elbow-wrist)
     left_elbow_angle: Optional[float] = None
     right_elbow_angle: Optional[float] = None
+    avg_elbow_angle: Optional[float] = None
 
     # Neck (nose/ear → shoulder vs vertical)
     neck_flexion: Optional[float] = None
 
-    # Shoulder elevation (for REBA upper arm score)
-    left_shoulder_angle: Optional[float] = None   # Angle of upper arm from trunk
+    # Shoulder elevation (Upper arm relative to torso / vertical)
+    left_shoulder_angle: Optional[float] = None   # Angle of upper arm elevation from neutral torso (deg)
     right_shoulder_angle: Optional[float] = None
+    avg_shoulder_angle: Optional[float] = None
+    max_shoulder_angle: Optional[float] = None
+    is_arm_above_shoulder: bool = False           # Elevation > 90° (high ergonomic hazard)
+    is_arm_elevated_45: bool = False              # Elevation > 45° (moderate ergonomic hazard)
 
-    # Wrist deviation (simplified — angle at wrist)
+    # Wrist deviation (angle at wrist)
     left_wrist_angle: Optional[float] = None
     right_wrist_angle: Optional[float] = None
 
@@ -176,7 +181,7 @@ def compute_joint_angles(
     if knee_vals:
         angles.avg_knee_angle = sum(knee_vals) / len(knee_vals)
 
-    # ── Elbow Angles (shoulder-elbow-wrist) ──
+    # ── Elbow Angles (shoulder-elbow-wrist via vector cosine rule) ──
     if _is_valid(kp, conf, KP_LEFT_SHOULDER, KP_LEFT_ELBOW, KP_LEFT_WRIST, min_conf=min_conf):
         angles.left_elbow_angle = compute_angle(
             kp[KP_LEFT_SHOULDER], kp[KP_LEFT_ELBOW], kp[KP_LEFT_WRIST]
@@ -187,29 +192,37 @@ def compute_joint_angles(
             kp[KP_RIGHT_SHOULDER], kp[KP_RIGHT_ELBOW], kp[KP_RIGHT_WRIST]
         )
 
+    elbow_vals = [v for v in [angles.left_elbow_angle, angles.right_elbow_angle] if v is not None]
+    if elbow_vals:
+        angles.avg_elbow_angle = sum(elbow_vals) / len(elbow_vals)
+
     # ── Neck Flexion ──
     # Angle from vertical of (nose → mid-shoulder) vector
     if _is_valid(kp, conf, KP_NOSE, KP_LEFT_SHOULDER, KP_RIGHT_SHOULDER, min_conf=min_conf):
         mid_shoulder = _midpoint(kp[KP_LEFT_SHOULDER], kp[KP_RIGHT_SHOULDER])
         angles.neck_flexion = compute_angle_from_vertical(kp[KP_NOSE], mid_shoulder)
 
-    # ── Shoulder / Upper Arm Angles (for REBA) ──
-    # Angle of upper arm relative to trunk vertical
+    # ── Shoulder / Upper Arm Elevation Angles (vector dot product relative to torso) ──
+    # Angle of upper arm relative to torso line (hip-shoulder-elbow)
     if _is_valid(kp, conf, KP_LEFT_SHOULDER, KP_LEFT_ELBOW,
                  KP_LEFT_HIP, min_conf=min_conf):
-        # Angle at shoulder: hip-shoulder-elbow
+        # Angle at shoulder: hip-shoulder-elbow (0° hanging along torso, 90° horizontal, 180° overhead)
         angles.left_shoulder_angle = compute_angle(
             kp[KP_LEFT_HIP], kp[KP_LEFT_SHOULDER], kp[KP_LEFT_ELBOW]
         )
-        # Convert to flexion from neutral (arm hanging = ~180°, so flexion = 180 - angle)
-        angles.left_shoulder_angle = abs(180.0 - angles.left_shoulder_angle)
 
     if _is_valid(kp, conf, KP_RIGHT_SHOULDER, KP_RIGHT_ELBOW,
                  KP_RIGHT_HIP, min_conf=min_conf):
         angles.right_shoulder_angle = compute_angle(
             kp[KP_RIGHT_HIP], kp[KP_RIGHT_SHOULDER], kp[KP_RIGHT_ELBOW]
         )
-        angles.right_shoulder_angle = abs(180.0 - angles.right_shoulder_angle)
+
+    shoulder_vals = [v for v in [angles.left_shoulder_angle, angles.right_shoulder_angle] if v is not None]
+    if shoulder_vals:
+        angles.avg_shoulder_angle = sum(shoulder_vals) / len(shoulder_vals)
+        angles.max_shoulder_angle = max(shoulder_vals)
+        angles.is_arm_above_shoulder = any(v >= 90.0 for v in shoulder_vals)
+        angles.is_arm_elevated_45 = any(v >= 45.0 for v in shoulder_vals)
 
     # ── Wrist Angles ──
     if _is_valid(kp, conf, KP_LEFT_ELBOW, KP_LEFT_WRIST, min_conf=min_conf):

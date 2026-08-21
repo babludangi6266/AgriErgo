@@ -26,6 +26,7 @@ from config.settings import (
     POSTURE_SMOOTHING_WINDOW,
     KP_LEFT_ANKLE, KP_RIGHT_ANKLE,
     KP_LEFT_HIP, KP_RIGHT_HIP,
+    KP_LEFT_SHOULDER, KP_RIGHT_SHOULDER,
 )
 from agriergo.interpretation.joint_angles import JointAngles
 
@@ -164,41 +165,76 @@ class PostureClassifier:
         keypoints: np.ndarray,
         confidences: np.ndarray,
     ) -> tuple:
-        """Apply rule-based classification. Returns (label, confidence)."""
+        """
+        Apply geometric classification rules:
+        1. WALKING — Intermittent spatial displacement of ankle coordinates over continuous frames
+        2. SQUATTING — Extreme flexion of knee joints (knee < 90°) with hips low to ankle line
+        3. BENDING — Torso inclination drops (trunk flexion > 30° or hip < 135°) with knees largely straight (> 130°)
+        4. SITTING — Hip & knee bent (~90° / hip < 120°, knee 70°-135°) with lower torso altitude
+        5. STANDING — Hip, knee, and ankle align near vertical (knee > 150°, trunk upright < 20°, hip > 150°)
+        """
 
-        # Rule 1: WALKING — ankle displacement exceeds threshold
+        # Rule 1: WALKING — ankle displacement exceeds threshold over consecutive frames
         if displacement is not None and displacement > WALKING_DISPLACEMENT_THRESHOLD:
             self._walk_counter[worker_id] = self._walk_counter.get(worker_id, 0) + 1
             if self._walk_counter[worker_id] >= WALKING_MIN_CONSECUTIVE:
-                return PostureLabel.WALKING, 0.85
+                return PostureLabel.WALKING, 0.88
         else:
             self._walk_counter[worker_id] = 0
 
-        # Rule 2: SQUATTING — deep knee flexion (< 100°) with low hip height
-        if angles.avg_knee_angle is not None and angles.avg_knee_angle < 100.0:
-            if angles.avg_hip_angle is not None and angles.avg_hip_angle < 110.0:
-                return PostureLabel.SQUATTING, 0.90
+        # Calculate Hip-to-Ankle vertical altitude if keypoints are available
+        hip_y = None
+        ankle_y = None
+        shoulder_y = None
+        if confidences[KP_LEFT_HIP] > 0.3 or confidences[KP_RIGHT_HIP] > 0.3:
+            h_pts = [keypoints[i][1] for i in [KP_LEFT_HIP, KP_RIGHT_HIP] if confidences[i] > 0.3]
+            hip_y = np.mean(h_pts)
+        if confidences[KP_LEFT_ANKLE] > 0.3 or confidences[KP_RIGHT_ANKLE] > 0.3:
+            a_pts = [keypoints[i][1] for i in [KP_LEFT_ANKLE, KP_RIGHT_ANKLE] if confidences[i] > 0.3]
+            ankle_y = np.mean(a_pts)
+        if confidences[KP_LEFT_SHOULDER] > 0.3 or confidences[KP_RIGHT_SHOULDER] > 0.3:
+            s_pts = [keypoints[i][1] for i in [KP_LEFT_SHOULDER, KP_RIGHT_SHOULDER] if confidences[i] > 0.3]
+            shoulder_y = np.mean(s_pts)
 
-        # Rule 3: BENDING — trunk flexion > 30° from vertical
-        if angles.trunk_flexion is not None:
-            if angles.trunk_flexion > TRUNK_FLEXION_BENDING:
-                conf = min(0.95, 0.6 + (angles.trunk_flexion / 100.0))
+        # Rule 2: SQUATTING — extreme flexion of knees (< 90°) with hips close to ankle line
+        is_hips_low = False
+        if hip_y is not None and ankle_y is not None and shoulder_y is not None:
+            torso_h = abs(hip_y - shoulder_y)
+            leg_h = abs(ankle_y - hip_y)
+            if torso_h > 0 and leg_h < torso_h * 0.75:
+                is_hips_low = True
+
+        if angles.avg_knee_angle is not None and angles.avg_knee_angle < 95.0:
+            if is_hips_low or (angles.avg_hip_angle is not None and angles.avg_hip_angle < 105.0):
+                return PostureLabel.SQUATTING, 0.92
+
+        # Rule 3: BENDING — torso inclination > 30° from vertical while knees largely straight (> 130°)
+        if angles.trunk_flexion is not None and angles.trunk_flexion > TRUNK_FLEXION_BENDING:
+            knee_straight = angles.avg_knee_angle is None or angles.avg_knee_angle >= 130.0
+            if knee_straight:
+                conf = min(0.96, 0.65 + (angles.trunk_flexion / 100.0))
                 return PostureLabel.BENDING, conf
 
-        # Rule 4: SITTING — hip angle < 120°
-        if angles.avg_hip_angle is not None:
-            if angles.avg_hip_angle < HIP_ANGLE_SITTING:
+        # Rule 4: SITTING — hip & knee joints bent (hip < 120°, knee 70°-135°)
+        if angles.avg_hip_angle is not None and angles.avg_hip_angle < HIP_ANGLE_SITTING:
+            if angles.avg_knee_angle is not None and 70.0 <= angles.avg_knee_angle <= 135.0:
+                return PostureLabel.SITTING, 0.85
+            elif angles.trunk_flexion is not None and angles.trunk_flexion < 30.0:
                 return PostureLabel.SITTING, 0.80
 
-        # Rule 5: STANDING — trunk upright + hip extended
-        if angles.trunk_flexion is not None and angles.avg_hip_angle is not None:
-            if (angles.trunk_flexion < TRUNK_FLEXION_UPRIGHT and
-                    angles.avg_hip_angle > HIP_ANGLE_STANDING):
+        # Rule 5: STANDING — hip, knee, and ankle align near vertical (knee > 150°, trunk < 20°, hip > 150°)
+        if angles.trunk_flexion is not None and angles.trunk_flexion < TRUNK_FLEXION_UPRIGHT:
+            if angles.avg_hip_angle is not None and angles.avg_hip_angle > 145.0:
+                return PostureLabel.STANDING, 0.92
+            if angles.avg_knee_angle is not None and angles.avg_knee_angle > 150.0:
                 return PostureLabel.STANDING, 0.90
 
-        # Default upright fallback
-        if angles.trunk_flexion is not None and angles.trunk_flexion < TRUNK_FLEXION_BENDING:
-            return PostureLabel.STANDING, 0.60
+        # Default upright / bending fallback
+        if angles.trunk_flexion is not None:
+            if angles.trunk_flexion < TRUNK_FLEXION_BENDING:
+                return PostureLabel.STANDING, 0.65
+            else:
+                return PostureLabel.BENDING, 0.70
 
         return PostureLabel.UNKNOWN, 0.0
 

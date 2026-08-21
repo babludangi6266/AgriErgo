@@ -17,6 +17,7 @@ from agriergo.interpretation.posture_classifier import PostureLabel
 from agriergo.interpretation.activity_segmenter import ActivityBout
 from agriergo.interpretation.repetition_detector import RepetitionResult
 from agriergo.interpretation.trip_counter import TripCountResult
+from agriergo.analytics.standardiser import Standardised1HrReport, HourlyStandardiser
 
 
 @dataclass
@@ -49,6 +50,15 @@ class PostureSummary:
     avg_knee_angle: Optional[float] = None
     angle_time_series: List[Dict[str, Any]] = field(default_factory=list)
 
+    # Arm Postural Study (Shoulder Elevation & Elbow Flexion)
+    avg_shoulder_angle: Optional[float] = None
+    max_shoulder_angle: Optional[float] = None
+    avg_elbow_angle: Optional[float] = None
+    shoulder_above_45_pct: float = 0.0
+    shoulder_above_90_pct: float = 0.0
+    arm_postural_risk: str = "Low"
+    arm_angle_time_series: List[Dict[str, Any]] = field(default_factory=list)
+
 
 @dataclass
 class WorkerReport:
@@ -65,6 +75,18 @@ class WorkerReport:
     bending_duration: float = 0.0
     severe_bending_duration: float = 0.0 # Bending > 60 degrees
     walking_duration: float = 0.0       # Parameter 4: Walking duration
+
+    # Posture State Transitions (Repetition Counts / Reps)
+    sitting_reps: int = 0
+    squatting_reps: int = 0
+    standing_reps: int = 0
+    bending_reps: int = 0
+    walking_reps: int = 0
+
+    # Arm Elevation Exposure Durations
+    shoulder_above_45_duration: float = 0.0
+    shoulder_above_90_duration: float = 0.0
+    arm_postural_risk: Optional[str] = "Low"
 
     # Parameter 5: Load carried
     load_instances: List[LoadInstance] = field(default_factory=list)
@@ -87,7 +109,7 @@ class WorkerReport:
     avg_work_bout: float = 0.0         # Seconds
     work_bouts: List[ActivityBout] = field(default_factory=list)
 
-    # Parameter 11: Rest duration
+    # Parameter 11: Rest duration / Work Pause (Action 7)
     total_rest_duration: float = 0.0    # Seconds
     rest_count: int = 0
     avg_rest_duration: float = 0.0      # Seconds
@@ -96,12 +118,16 @@ class WorkerReport:
     # Activity timeline
     activity_bouts: List[ActivityBout] = field(default_factory=list)
 
+    # Standardised 1-Hour Activity Analysis
+    standardised_1hr: Optional[Standardised1HrReport] = None
+
     # Advanced Risk & Drudgery Metrics
     reba_score: Optional[int] = None
     reba_risk_level: Optional[str] = None
     rula_score: Optional[int] = None
     rula_action_level: Optional[str] = None
     drudgery_index: Optional[float] = None
+    drudgery_percentage: Optional[float] = None
     drudgery_category: Optional[str] = None
     drudgery_recommendations: List[str] = field(default_factory=list)
     fatigue_level: Optional[float] = None
@@ -141,24 +167,11 @@ class ParameterAggregator:
         hip_angles: List[Optional[float]],
         knee_angles: Optional[List[Optional[float]]] = None,
         timestamps: Optional[List[float]] = None,
+        shoulder_angles: Optional[List[Optional[float]]] = None,
+        elbow_angles: Optional[List[Optional[float]]] = None,
     ) -> WorkerReport:
         """
-        Aggregate all data sources into a WorkerReport.
-
-        Args:
-            worker_id: Worker identifier.
-            activity_bouts: Segmented activity bouts.
-            repetition_result: Repetitive motion analysis result.
-            trip_result: Trip counting result.
-            tool_detections: Tool name → list of detection timestamps.
-            load_detections: List of load detection events.
-            trunk_flexions: Per-frame trunk flexion values.
-            hip_angles: Per-frame hip angle values.
-            knee_angles: Per-frame knee angle values.
-            timestamps: Per-frame timestamps.
-
-        Returns:
-            Complete WorkerReport with all 11 parameters.
+        Aggregate all data sources into a WorkerReport with 1-Hour Standardisation.
         """
         report = WorkerReport(worker_id=worker_id, total_tracked_time=0.0)
 
@@ -168,25 +181,36 @@ class ParameterAggregator:
                 activity_bouts[-1].end_time - activity_bouts[0].start_time, 2
             )
 
-        # ── Parameters 1-4: Posture durations ──
+        # ── Parameters 1-4: Posture durations & Repetitions (Action state-entry transitions) ──
         report.activity_bouts = activity_bouts
         for bout in activity_bouts:
             if bout.activity == PostureLabel.SITTING:
                 report.sitting_duration += bout.duration
+                report.sitting_reps += 1
             elif bout.activity == PostureLabel.SQUATTING:
                 report.squatting_duration += bout.duration
+                report.squatting_reps += 1
             elif bout.activity == PostureLabel.STANDING and not bout.is_rest:
                 report.standing_duration += bout.duration
+                report.standing_reps += 1
             elif bout.activity == PostureLabel.BENDING:
                 report.bending_duration += bout.duration
+                report.bending_reps += 1
             elif bout.activity == PostureLabel.WALKING:
                 report.walking_duration += bout.duration
+                report.walking_reps += 1
 
         report.sitting_duration = round(report.sitting_duration, 2)
         report.squatting_duration = round(report.squatting_duration, 2)
         report.standing_duration = round(report.standing_duration, 2)
         report.bending_duration = round(report.bending_duration, 2)
         report.walking_duration = round(report.walking_duration, 2)
+
+        # Severe bending duration (>60°)
+        if timestamps and trunk_flexions:
+            frame_dt = (report.total_tracked_time / max(1, len(timestamps))) if len(timestamps) > 0 else 0.2
+            sev_bends = sum(1 for tf in trunk_flexions if tf is not None and tf > 60.0)
+            report.severe_bending_duration = round(sev_bends * frame_dt, 2)
 
         # ── Parameter 5: Load carried ──
         for det in load_detections:
@@ -206,12 +230,22 @@ class ParameterAggregator:
         # ── Parameter 8: Tools/equipment used ──
         report.tools_used = self._aggregate_tool_usage(tool_detections)
 
-        # ── Parameter 9: Posture summary ──
+        # ── Parameter 9: Posture summary (including Arm Postural Study) ──
         report.posture_summary = self._compute_posture_summary(
-            activity_bouts, trunk_flexions, hip_angles, knee_angles, timestamps
+            activity_bouts, trunk_flexions, hip_angles, knee_angles, timestamps,
+            shoulder_angles, elbow_angles
         )
 
-        # ── Parameters 10 & 11: Work and rest durations ──
+        if report.posture_summary:
+            report.arm_postural_risk = report.posture_summary.arm_postural_risk
+            report.shoulder_above_45_duration = round(
+                (report.posture_summary.shoulder_above_45_pct / 100.0) * report.total_tracked_time, 2
+            )
+            report.shoulder_above_90_duration = round(
+                (report.posture_summary.shoulder_above_90_pct / 100.0) * report.total_tracked_time, 2
+            )
+
+        # ── Parameters 10 & 11: Work and rest durations / Work Pause (Action 7) ──
         work_bouts = [b for b in activity_bouts if not b.is_rest]
         rest_bouts = [b for b in activity_bouts if b.is_rest]
 
@@ -228,6 +262,29 @@ class ParameterAggregator:
             report.total_rest_duration = round(sum(rest_durations), 2)
             report.rest_count = len(rest_bouts)
             report.avg_rest_duration = round(np.mean(rest_durations), 2)
+
+        # ── Standardised 1-Hour Activity Analysis ──
+        cpm = repetition_result.cycles_per_minute if repetition_result and repetition_result.is_repetitive else 0.0
+        sh_45_pct = report.posture_summary.shoulder_above_45_pct if report.posture_summary else 0.0
+        sh_90_pct = report.posture_summary.shoulder_above_90_pct if report.posture_summary else 0.0
+        trip_cnt = trip_result.trip_count if trip_result else 0
+
+        report.standardised_1hr = HourlyStandardiser.standardise(
+            total_tracked_time=report.total_tracked_time,
+            sitting_duration=report.sitting_duration,
+            squatting_duration=report.squatting_duration,
+            standing_duration=report.standing_duration,
+            bending_duration=report.bending_duration,
+            severe_bending_duration=report.severe_bending_duration,
+            walking_duration=report.walking_duration,
+            rest_duration=report.total_rest_duration,
+            rest_count=report.rest_count,
+            load_events=report.total_load_events,
+            trip_count=trip_cnt,
+            cycles_per_minute=cpm,
+            shoulder_above_45_pct=sh_45_pct,
+            shoulder_above_90_pct=sh_90_pct,
+        )
 
         return report
 
@@ -256,8 +313,10 @@ class ParameterAggregator:
         hip_angles: List[Optional[float]],
         knee_angles: Optional[List[Optional[float]]] = None,
         timestamps: Optional[List[float]] = None,
+        shoulder_angles: Optional[List[Optional[float]]] = None,
+        elbow_angles: Optional[List[Optional[float]]] = None,
     ) -> PostureSummary:
-        """Compute posture distribution, ergonomic angle statistics, and time-series."""
+        """Compute posture distribution, ergonomic angle statistics, and arm postural study."""
         # Duration per posture
         posture_durations: Dict[str, float] = {}
         total_duration = 0.0
@@ -290,19 +349,57 @@ class ParameterAggregator:
         valid_knees = [k for k in knee_list if k is not None]
         avg_knee = round(np.mean(valid_knees), 1) if valid_knees else None
 
-        # Angle Time Series for interactive visual plotting
+        # Arm Postural Study stats (Shoulder elevation & Elbow flexion)
+        sh_list = shoulder_angles or []
+        valid_sh = [s for s in sh_list if s is not None]
+        avg_shoulder = round(np.mean(valid_sh), 1) if valid_sh else None
+        max_shoulder = round(max(valid_sh), 1) if valid_sh else None
+
+        el_list = elbow_angles or []
+        valid_el = [e for e in el_list if e is not None]
+        avg_elbow = round(np.mean(valid_el), 1) if valid_el else None
+
+        # Shoulder elevation percentages (>45° and >90°)
+        if valid_sh:
+            above_45 = sum(1 for s in valid_sh if s >= 45.0)
+            above_90 = sum(1 for s in valid_sh if s >= 90.0)
+            sh_45_pct = round((above_45 / len(valid_sh)) * 100.0, 1)
+            sh_90_pct = round((above_90 / len(valid_sh)) * 100.0, 1)
+        else:
+            sh_45_pct = 0.0
+            sh_90_pct = 0.0
+
+        if sh_90_pct > 15.0 or sh_45_pct > 50.0:
+            arm_risk = "High"
+        elif sh_45_pct > 25.0:
+            arm_risk = "Moderate"
+        else:
+            arm_risk = "Low"
+
+        # Angle Time Series for interactive visual plotting (Trunk, Hip, Knee)
         angle_series = []
-        if timestamps and trunk_flexions:
+        arm_series = []
+        if timestamps:
             for idx, ts in enumerate(timestamps):
                 tf = trunk_flexions[idx] if idx < len(trunk_flexions) else None
                 ha = hip_angles[idx] if idx < len(hip_angles) else None
                 ka = knee_list[idx] if idx < len(knee_list) else None
+                sh = sh_list[idx] if idx < len(sh_list) else None
+                el = el_list[idx] if idx < len(el_list) else None
+
                 if tf is not None or ha is not None or ka is not None:
                     angle_series.append({
                         "timestamp": round(ts, 2),
                         "trunk_flexion": round(tf, 1) if tf is not None else None,
                         "hip_angle": round(ha, 1) if ha is not None else None,
                         "knee_angle": round(ka, 1) if ka is not None else None,
+                    })
+
+                if sh is not None or el is not None:
+                    arm_series.append({
+                        "timestamp": round(ts, 2),
+                        "shoulder_angle": round(sh, 1) if sh is not None else None,
+                        "elbow_angle": round(el, 1) if el is not None else None,
                     })
 
         return PostureSummary(
@@ -313,4 +410,11 @@ class ParameterAggregator:
             avg_hip_angle=avg_hip,
             avg_knee_angle=avg_knee,
             angle_time_series=angle_series,
+            avg_shoulder_angle=avg_shoulder,
+            max_shoulder_angle=max_shoulder,
+            avg_elbow_angle=avg_elbow,
+            shoulder_above_45_pct=sh_45_pct,
+            shoulder_above_90_pct=sh_90_pct,
+            arm_postural_risk=arm_risk,
+            arm_angle_time_series=arm_series,
         )

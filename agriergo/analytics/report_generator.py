@@ -194,8 +194,43 @@ class ReportGenerator:
                             float(wr.posture_summary.avg_knee_angle)
                             if wr.posture_summary and getattr(wr.posture_summary, 'avg_knee_angle', None) is not None else None
                         ),
+                        "severe_bending_seconds": float(getattr(wr, 'severe_bending_duration', 0.0)),
+                        "reps": {
+                            "sitting_reps": int(getattr(wr, 'sitting_reps', 0)),
+                            "squatting_reps": int(getattr(wr, 'squatting_reps', 0)),
+                            "standing_reps": int(getattr(wr, 'standing_reps', 0)),
+                            "bending_reps": int(getattr(wr, 'bending_reps', 0)),
+                            "walking_reps": int(getattr(wr, 'walking_reps', 0)),
+                        },
                         "angle_time_series": (
                             getattr(wr.posture_summary, 'angle_time_series', [])
+                            if wr.posture_summary else []
+                        ),
+                    },
+                    "arm_postural_study": {
+                        "avg_shoulder_elevation_degrees": (
+                            float(wr.posture_summary.avg_shoulder_angle)
+                            if wr.posture_summary and getattr(wr.posture_summary, 'avg_shoulder_angle', None) is not None else None
+                        ),
+                        "max_shoulder_elevation_degrees": (
+                            float(wr.posture_summary.max_shoulder_angle)
+                            if wr.posture_summary and getattr(wr.posture_summary, 'max_shoulder_angle', None) is not None else None
+                        ),
+                        "avg_elbow_flexion_degrees": (
+                            float(wr.posture_summary.avg_elbow_angle)
+                            if wr.posture_summary and getattr(wr.posture_summary, 'avg_elbow_angle', None) is not None else None
+                        ),
+                        "shoulder_above_45_pct": (
+                            float(wr.posture_summary.shoulder_above_45_pct)
+                            if wr.posture_summary else 0.0
+                        ),
+                        "shoulder_above_90_pct": (
+                            float(wr.posture_summary.shoulder_above_90_pct)
+                            if wr.posture_summary else 0.0
+                        ),
+                        "arm_postural_risk": str(getattr(wr, 'arm_postural_risk', 'Low')),
+                        "arm_angle_time_series": (
+                            getattr(wr.posture_summary, 'arm_angle_time_series', [])
                             if wr.posture_summary else []
                         ),
                     },
@@ -216,6 +251,20 @@ class ReportGenerator:
                         "avg_rest_seconds": float(wr.avg_rest_duration),
                     },
                 },
+                "standardised_1hr_activity": {
+                    "scaling_factor": float(wr.standardised_1hr.scaling_factor) if wr.standardised_1hr else 1.0,
+                    "sitting_formatted": str(wr.standardised_1hr.sitting_formatted_1hr) if wr.standardised_1hr else "00:00:00",
+                    "squatting_formatted": str(wr.standardised_1hr.squatting_formatted_1hr) if wr.standardised_1hr else "00:00:00",
+                    "standing_formatted": str(wr.standardised_1hr.standing_formatted_1hr) if wr.standardised_1hr else "00:00:00",
+                    "bending_formatted": str(wr.standardised_1hr.bending_formatted_1hr) if wr.standardised_1hr else "00:00:00",
+                    "severe_bending_formatted": str(wr.standardised_1hr.severe_bending_formatted_1hr) if wr.standardised_1hr else "00:00:00",
+                    "walking_formatted": str(wr.standardised_1hr.walking_formatted_1hr) if wr.standardised_1hr else "00:00:00",
+                    "rest_formatted": str(wr.standardised_1hr.rest_formatted_1hr) if wr.standardised_1hr else "00:00:00",
+                    "active_work_formatted": str(wr.standardised_1hr.active_work_formatted_1hr) if wr.standardised_1hr else "01:00:00",
+                    "repetitive_cycles_1hr": int(wr.standardised_1hr.repetitive_cycles_1hr) if wr.standardised_1hr else 0,
+                    "load_events_1hr": int(wr.standardised_1hr.load_events_1hr) if wr.standardised_1hr else 0,
+                    "trips_1hr": int(wr.standardised_1hr.trips_1hr) if wr.standardised_1hr else 0,
+                },
                 "ergonomic_score": {
                     "reba_score": int(wr.reba_score) if wr.reba_score is not None else None,
                     "reba_risk_level": str(wr.reba_risk_level) if wr.reba_risk_level is not None else None,
@@ -224,6 +273,7 @@ class ReportGenerator:
                 },
                 "drudgery_assessment": {
                     "drudgery_index": float(getattr(wr, 'drudgery_index', 0.0) or 0.0),
+                    "drudgery_percentage": float(getattr(wr, 'drudgery_percentage', 0.0) or getattr(wr, 'drudgery_index', 0.0) or 0.0),
                     "drudgery_category": str(getattr(wr, 'drudgery_category', 'N/A')),
                     "estimated_fatigue_level": float(getattr(wr, 'fatigue_level', 0.0) or 0.0),
                     "recommendations": getattr(wr, 'drudgery_recommendations', []),

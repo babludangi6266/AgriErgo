@@ -144,6 +144,43 @@ class VideoAnnotator:
                     1
                 )
 
+            # Shoulder Elevation angle callout (Arm Postural Study)
+            sh_ang = angles.avg_shoulder_angle or angles.left_shoulder_angle or angles.right_shoulder_angle
+            if (conf[5] > 0.3 or conf[6] > 0.3) and sh_ang is not None:
+                sh_pt = kp[5] if conf[5] > 0.3 else kp[6]
+                spt = (int(sh_pt[0]), int(sh_pt[1]))
+                sh_color = (0, 0, 255) if sh_ang >= 45.0 else (0, 220, 0)
+                if sh_ang >= 90.0:
+                    sh_tag = f"Shoulder: {round(sh_ang, 0)} deg [OVERHEAD]"
+                    sh_color = (0, 0, 255)
+                else:
+                    sh_tag = f"Shoulder: {round(sh_ang, 0)} deg"
+                cv2.putText(
+                    annotated,
+                    sh_tag,
+                    (spt[0] - 80, spt[1] - 8),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.38,
+                    sh_color,
+                    1
+                )
+
+            # Elbow Flexion angle callout
+            el_ang = angles.avg_elbow_angle or angles.left_elbow_angle or angles.right_elbow_angle
+            if (conf[7] > 0.3 or conf[8] > 0.3) and el_ang is not None:
+                el_pt = kp[7] if conf[7] > 0.3 else kp[8]
+                ept = (int(el_pt[0]), int(el_pt[1]))
+                el_tag = f"Elbow: {round(el_ang, 0)} deg"
+                cv2.putText(
+                    annotated,
+                    el_tag,
+                    (ept[0] + 10, ept[1] + 12),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.36,
+                    (200, 230, 255),
+                    1
+                )
+
             # 4. Draw Bounding Box & HUD Label Badge
             if person.bbox is not None and len(person.bbox) == 4:
                 x1, y1, x2, y2 = [int(v) for v in person.bbox]

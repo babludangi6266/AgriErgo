@@ -141,9 +141,10 @@ class PDFReportGenerator:
             rula = getattr(wr, 'rula_score', None) or 1
             reba = wr.reba_score or 1
             adi = getattr(wr, 'drudgery_index', 0.0) or 0.0
+            drudgery_pct = getattr(wr, 'drudgery_percentage', 0.0) or adi
             adi_cat = getattr(wr, 'drudgery_category', 'Low Drudgery') or 'Low Drudgery'
             l5s1 = getattr(wr, 'l5s1_compression_n', 0.0) or 0.0
-            rwl = getattr(wr, 'niosh_rwl_kg', 0.0) or 0.0
+            arm_risk = getattr(wr, 'arm_postural_risk', 'Low') or 'Low'
 
             card_data = [
                 [
@@ -153,10 +154,10 @@ class PDFReportGenerator:
                     Paragraph(f"<b>{rula}</b>", bold_body),
                 ],
                 [
-                    Paragraph("<b>Drudgery Index (ADI):</b>", body_style),
-                    Paragraph(f"<b>{adi} / 100</b> ({adi_cat})", bold_body),
-                    Paragraph("<b>L5/S1 Compression:</b>", body_style),
-                    Paragraph(f"<b>{l5s1} N</b> ({'EXCEEDED 3.4kN' if l5s1 > 3400 else 'Safe Limit'})", bold_body),
+                    Paragraph("<b>Drudgery Index / Pct:</b>", body_style),
+                    Paragraph(f"<b>{adi} / 100 ({drudgery_pct}%)</b> ({adi_cat})", bold_body),
+                    Paragraph("<b>Arm Postural Risk:</b>", body_style),
+                    Paragraph(f"<b>{arm_risk}</b> (Elv >45°: {wr.posture_summary.shoulder_above_45_pct if wr.posture_summary else 0}%)", bold_body),
                 ],
             ]
             card_table = Table(card_data, colWidths=[140, 120, 140, 120])
@@ -167,33 +168,48 @@ class PDFReportGenerator:
                 ('PADDING', (0, 0), (-1, -1), 6),
             ]))
             elements.append(card_table)
-            elements.append(Spacer(1, 12))
+            elements.append(Spacer(1, 10))
 
-            # 11 Parameters Breakdown Table
-            elements.append(Paragraph(f"Worker #{wr.worker_id} Parameter Matrix", bold_body))
-            param_rows = [
-                [Paragraph("<b>Parameter</b>", bold_body), Paragraph("<b>Measurement / Value</b>", bold_body)],
-                [Paragraph("1. Sitting Duration", body_style), Paragraph(f"{wr.sitting_duration}s ({round(wr.sitting_duration/max(1, wr.total_tracked_time)*100,1)}%)", body_style)],
-                [Paragraph("1b. Squatting Duration", body_style), Paragraph(f"{getattr(wr, 'squatting_duration', 0.0)}s ({round(getattr(wr, 'squatting_duration', 0.0)/max(1, wr.total_tracked_time)*100,1)}%)", body_style)],
-                [Paragraph("2. Standing Duration", body_style), Paragraph(f"{wr.standing_duration}s ({round(wr.standing_duration/max(1, wr.total_tracked_time)*100,1)}%)", body_style)],
-                [Paragraph("3. Bending Duration", body_style), Paragraph(f"{wr.bending_duration}s ({round(wr.bending_duration/max(1, wr.total_tracked_time)*100,1)}%)", body_style)],
-                [Paragraph("4. Walking Duration", body_style), Paragraph(f"{getattr(wr, 'walking_duration', 0.0)}s ({round(getattr(wr, 'walking_duration', 0.0)/max(1, wr.total_tracked_time)*100,1)}%)", body_style)],
-                [Paragraph("5. Carried Load Events", body_style), Paragraph(f"{wr.total_load_events} load events", body_style)],
-                [Paragraph("6. Repetitive Motion", body_style), Paragraph(f"{wr.repetitive_movement.cycles_per_minute} cycles/min" if wr.repetitive_movement and wr.repetitive_movement.is_repetitive else "None detected", body_style)],
-                [Paragraph("7. Field Trips Count", body_style), Paragraph(f"{wr.trip_count_result.trip_count if wr.trip_count_result else 0} trips", body_style)],
-                [Paragraph("8. Tools/Equipment Detected", body_style), Paragraph(", ".join([t.tool_name for t in wr.tools_used]) if wr.tools_used else "None", body_style)],
-                [Paragraph("9. Posture and Joint Angles", body_style), Paragraph(f"Avg Trunk: {wr.posture_summary.avg_trunk_flexion if wr.posture_summary else 'N/A'} deg | Max Trunk: {wr.posture_summary.max_trunk_flexion if wr.posture_summary else 'N/A'} deg | Knee: {getattr(wr.posture_summary, 'avg_knee_angle', 'N/A')} deg", body_style)],
-                [Paragraph("10. Continuous Work Bout", body_style), Paragraph(f"Longest: {wr.longest_work_bout}s | Avg: {wr.avg_work_bout}s", body_style)],
-                [Paragraph("11. Rest Duration and Count", body_style), Paragraph(f"Total Rest: {wr.total_rest_duration}s ({wr.rest_count} rest periods)", body_style)],
+            # 1-Hour Standardisation & Raw Duration Matrix Table
+            std = wr.standardised_1hr
+            elements.append(Paragraph(f"Worker #{wr.worker_id} Standardised 1-Hour Activity Analysis", bold_body))
+            std_rows = [
+                [Paragraph("<b>Activity / Action</b>", bold_body), Paragraph("<b>Sampled Duration</b>", bold_body), Paragraph("<b>Standardised per 1-Hour</b>", bold_body), Paragraph("<b>Share (%)</b>", bold_body)],
+                [Paragraph("1. Sitting", body_style), Paragraph(f"{wr.sitting_duration}s", body_style), Paragraph(f"{std.sitting_formatted_1hr if std else 'N/A'}", bold_body), Paragraph(f"{std.sitting_pct if std else 0}%", body_style)],
+                [Paragraph("1b. Squatting", body_style), Paragraph(f"{getattr(wr, 'squatting_duration', 0.0)}s", body_style), Paragraph(f"{std.squatting_formatted_1hr if std else 'N/A'}", bold_body), Paragraph(f"{std.squatting_pct if std else 0}%", body_style)],
+                [Paragraph("2. Standing", body_style), Paragraph(f"{wr.standing_duration}s", body_style), Paragraph(f"{std.standing_formatted_1hr if std else 'N/A'}", bold_body), Paragraph(f"{std.standing_pct if std else 0}%", body_style)],
+                [Paragraph("3. Bending (Stooping)", body_style), Paragraph(f"{wr.bending_duration}s", body_style), Paragraph(f"{std.bending_formatted_1hr if std else 'N/A'}", bold_body), Paragraph(f"{std.bending_pct if std else 0}%", body_style)],
+                [Paragraph("4. Walking", body_style), Paragraph(f"{getattr(wr, 'walking_duration', 0.0)}s", body_style), Paragraph(f"{std.walking_formatted_1hr if std else 'N/A'}", bold_body), Paragraph(f"{std.walking_pct if std else 0}%", body_style)],
+                [Paragraph("7. Work Pause (Rest)", body_style), Paragraph(f"{wr.total_rest_duration}s", body_style), Paragraph(f"{std.rest_formatted_1hr if std else 'N/A'}", bold_body), Paragraph(f"{std.rest_pct if std else 0}%", body_style)],
+                [Paragraph("Active Work Session", bold_body), Paragraph(f"{round(wr.total_tracked_time - wr.total_rest_duration, 1)}s", bold_body), Paragraph(f"{std.active_work_formatted_1hr if std else '01:00:00'}", bold_body), Paragraph(f"{round(100 - (std.rest_pct if std else 0), 1)}%", bold_body)],
             ]
-            p_table = Table(param_rows, colWidths=[200, 320])
-            p_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#E2E8F0")),
+            std_table = Table(std_rows, colWidths=[150, 110, 140, 120])
+            std_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#F1F5F9")),
                 ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
-                ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#F1F5F9")),
-                ('PADDING', (0, 0), (-1, -1), 5),
+                ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+                ('PADDING', (0, 0), (-1, -1), 4),
             ]))
-            elements.append(p_table)
+            elements.append(std_table)
+            elements.append(Spacer(1, 10))
+
+            # Postural Angles & Arm Study Matrix
+            elements.append(Paragraph(f"Worker #{wr.worker_id} Biomechanical Angle &amp; Arm Posture Study", bold_body))
+            ang_rows = [
+                [Paragraph("<b>Biomechanical Angle</b>", bold_body), Paragraph("<b>Measured Value</b>", bold_body), Paragraph("<b>Ergonomic Standard / Risk</b>", bold_body)],
+                [Paragraph("Trunk Flexion (Torso Bending)", body_style), Paragraph(f"Avg: {wr.posture_summary.avg_trunk_flexion if wr.posture_summary else 'N/A'}° | Peak: {wr.posture_summary.max_trunk_flexion if wr.posture_summary else 'N/A'}°", body_style), Paragraph("ISO 11226 Limit: &lt;60° (&lt;4 min/shift)", body_style)],
+                [Paragraph("Knee Flexion Angle", body_style), Paragraph(f"Avg: {getattr(wr.posture_summary, 'avg_knee_angle', 'N/A')}°", body_style), Paragraph("Stoop: &gt;140° | Deep Squat: &lt;90°", body_style)],
+                [Paragraph("Shoulder Upper Arm Elevation", body_style), Paragraph(f"Avg: {getattr(wr.posture_summary, 'avg_shoulder_angle', 'N/A')}° | Peak: {getattr(wr.posture_summary, 'max_shoulder_angle', 'N/A')}°", body_style), Paragraph(f"Time &gt;45°: {wr.posture_summary.shoulder_above_45_pct if wr.posture_summary else 0}% | &gt;90°: {wr.posture_summary.shoulder_above_90_pct if wr.posture_summary else 0}%", body_style)],
+                [Paragraph("Elbow Flexion Angle", body_style), Paragraph(f"Avg: {getattr(wr.posture_summary, 'avg_elbow_angle', 'N/A')}°", body_style), Paragraph("Neutral: 60°–100° (REBA Table B)", body_style)],
+            ]
+            ang_table = Table(ang_rows, colWidths=[180, 170, 170])
+            ang_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#F8FAFC")),
+                ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+                ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+                ('PADDING', (0, 0), (-1, -1), 4),
+            ]))
+            elements.append(ang_table)
             elements.append(Spacer(1, 15))
 
         doc.build(elements)

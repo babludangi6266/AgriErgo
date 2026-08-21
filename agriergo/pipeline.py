@@ -316,7 +316,7 @@ class AgriErgoPipeline:
             trajectory = unified_trajectories[wid]
             trip_result = self.trip_counter.count_trips(trajectory)
 
-            # Aggregate parameters
+            # Aggregate parameters with 1-Hour Standardisation and Arm Postural Study
             report = self.aggregator.aggregate(
                 worker_id=wid,
                 activity_bouts=bouts,
@@ -328,6 +328,8 @@ class AgriErgoPipeline:
                 hip_angles=unified_hip_angles[wid],
                 knee_angles=unified_knee_angles[wid],
                 timestamps=unified_timestamps[wid],
+                shoulder_angles=unified_shoulder_angles[wid],
+                elbow_angles=unified_elbow_angles[wid],
             )
 
             # Compute overall REBA score
@@ -352,9 +354,13 @@ class AgriErgoPipeline:
                 report.rula_score = overall_rula.final_score
                 report.rula_action_level = overall_rula.action_level
 
-            # Compute Agricultural Drudgery Index (ADI)
+            # Compute Agricultural Drudgery Index (ADI) & Drudgery Percentage
             if hasattr(self, 'drudgery_calculator'):
                 dist = report.posture_summary.posture_distribution if report.posture_summary else {}
+                sev_bend_pct = round((report.severe_bending_duration / max(1.0, report.total_tracked_time)) * 100.0, 1)
+                sh_45_pct = report.posture_summary.shoulder_above_45_pct if report.posture_summary else 0.0
+                sh_90_pct = report.posture_summary.shoulder_above_90_pct if report.posture_summary else 0.0
+
                 drudgery_res = self.drudgery_calculator.calculate(
                     reba_score=float(report.reba_score or 1),
                     rula_score=float(getattr(report, 'rula_score', 1) or 1),
@@ -364,8 +370,12 @@ class AgriErgoPipeline:
                     longest_work_bout_seconds=report.longest_work_bout,
                     total_rest_seconds=report.total_rest_duration,
                     load_events_count=report.total_load_events,
+                    severe_bending_pct=sev_bend_pct,
+                    shoulder_above_45_pct=sh_45_pct,
+                    shoulder_above_90_pct=sh_90_pct,
                 )
                 report.drudgery_index = drudgery_res.drudgery_index
+                report.drudgery_percentage = drudgery_res.drudgery_percentage
                 report.drudgery_category = drudgery_res.drudgery_category
                 report.drudgery_recommendations = drudgery_res.recommendations
                 report.fatigue_level = drudgery_res.estimated_fatigue_level

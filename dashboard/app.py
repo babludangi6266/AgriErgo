@@ -251,12 +251,13 @@ if "pipeline_result" in st.session_state:
             st.metric("RULA Score (Upper)", f"{getattr(report, 'rula_score', 'N/A') or 'N/A'}")
         with c4:
             adi_val = getattr(report, 'drudgery_index', 0.0) or 0.0
-            st.metric("Drudgery Index (ADI)", f"{adi_val} / 100")
+            drudgery_pct = getattr(report, 'drudgery_percentage', 0.0) or adi_val
+            st.metric("Drudgery Index / Pct", f"{drudgery_pct}%", help=f"Agricultural Drudgery Index: {adi_val} / 100")
         with c5:
             l5s1_val = getattr(report, 'l5s1_compression_n', 0.0) or 0.0
             st.metric("L5/S1 Compression", f"{l5s1_val} N")
         with c6:
-            st.metric("Fatigue Level", f"{getattr(report, 'fatigue_level', 0.0) or 0.0}%")
+            st.metric("Arm Postural Risk", f"{getattr(report, 'arm_postural_risk', 'Low') or 'Low'}")
 
         # ISO 11226 Ergonomic Shift Hazard Callout Banner
         if getattr(report, 'iso_11226_violated', False):
@@ -267,7 +268,109 @@ if "pipeline_result" in st.session_state:
         if recs:
             st.info(f"💡 **Ergonomic Intervention Recommendation:** {recs[0]}")
 
-        # ── Dedicated Postural Angle & Plantation Stooping Assessment ──
+        # ── SECTION 1: Standardised 1-Hour Activity Analysis ──
+        st.markdown("### ⏱️ Standardisation for 1-Hour Activity Baseline")
+        st.caption("Extrapolates and standardizes sampled video data to a standardized **1-Hour (3600 seconds)** continuous activity baseline for scientific ergonomic comparison.")
+
+        std = getattr(report, 'standardised_1hr', None)
+        if std:
+            std_col1, std_col2, std_col3, std_col4 = st.columns(4)
+            with std_col1:
+                st.metric("Standard 1-Hr Duration", "01:00:00 (3600s)")
+            with std_col2:
+                st.metric("Standard Active Work", f"{std.active_work_formatted_1hr}", help="Total active work duration per 1-hour shift excluding pauses.")
+            with std_col3:
+                st.metric("Standard Rest / Pauses", f"{std.rest_formatted_1hr} ({std.rest_pct}%)", help="Standardised rest duration per 1-hour.")
+            with std_col4:
+                st.metric("Standard Repetitions (1-Hr)", f"{std.repetitive_cycles_1hr} cycles", help="Standardised repetitive work cycles performed per 1-hour.")
+
+            # Standardised Durations Table
+            std_table_data = [
+                {"Action / Posture": "1. Sitting", "Sampled Tracked Time": f"{report.sitting_duration}s", "1-Hour Standardised Duration": std.sitting_formatted_1hr, "Share (%)": f"{std.sitting_pct}%", "State Entry Reps": getattr(report, 'sitting_reps', 0)},
+                {"Action / Posture": "1b. Squatting", "Sampled Tracked Time": f"{getattr(report, 'squatting_duration', 0.0)}s", "1-Hour Standardised Duration": std.squatting_formatted_1hr, "Share (%)": f"{std.squatting_pct}%", "State Entry Reps": getattr(report, 'squatting_reps', 0)},
+                {"Action / Posture": "2. Standing", "Sampled Tracked Time": f"{report.standing_duration}s", "1-Hour Standardised Duration": std.standing_formatted_1hr, "Share (%)": f"{std.standing_pct}%", "State Entry Reps": getattr(report, 'standing_reps', 0)},
+                {"Action / Posture": "3. Bending (Stooping)", "Sampled Tracked Time": f"{report.bending_duration}s", "1-Hour Standardised Duration": std.bending_formatted_1hr, "Share (%)": f"{std.bending_pct}%", "State Entry Reps": getattr(report, 'bending_reps', 0)},
+                {"Action / Posture": "4. Walking", "Sampled Tracked Time": f"{report.walking_duration}s", "1-Hour Standardised Duration": std.walking_formatted_1hr, "Share (%)": f"{std.walking_pct}%", "State Entry Reps": getattr(report, 'walking_reps', 0)},
+                {"Action / Posture": "5. Carried Load Events", "Sampled Tracked Time": f"{report.total_load_events} events", "1-Hour Standardised Duration": f"{std.load_events_1hr} events/hr", "Share (%)": "N/A", "State Entry Reps": report.total_load_events},
+                {"Action / Posture": "7. Work Pause (Rest)", "Sampled Tracked Time": f"{report.total_rest_duration}s", "1-Hour Standardised Duration": std.rest_formatted_1hr, "Share (%)": f"{std.rest_pct}%", "State Entry Reps": f"{std.rest_count_1hr} pauses/hr"},
+            ]
+            st.dataframe(pd.DataFrame(std_table_data), use_container_width=True, hide_index=True)
+            st.markdown("---")
+
+        # ── SECTION 2: Angle of Arms (Postural Study) ──
+        st.markdown("### 💪 Angle of Arms — Postural Study (Shoulder Elevation & Elbow Flexion)")
+        st.caption("Biomechanical vector tracking between **Shoulder → Elbow** and **Elbow → Wrist** to quantify upper arm elevation relative to torso and identify static overhead hazards.")
+
+        ps = report.posture_summary
+        avg_sh = getattr(ps, 'avg_shoulder_angle', None) if ps else None
+        max_sh = getattr(ps, 'max_shoulder_angle', None) if ps else None
+        avg_el = getattr(ps, 'avg_elbow_angle', None) if ps else None
+        sh_45 = getattr(ps, 'shoulder_above_45_pct', 0.0) if ps else 0.0
+        sh_90 = getattr(ps, 'shoulder_above_90_pct', 0.0) if ps else 0.0
+
+        arm_c1, arm_c2, arm_c3, arm_c4 = st.columns(4)
+        with arm_c1:
+            st.metric("💪 Avg Shoulder Elevation", f"{avg_sh}°" if avg_sh is not None else "N/A", help="Upper arm angle relative to neutral torso axis.")
+        with arm_c2:
+            st.metric("⚡ Peak Shoulder Angle", f"{max_sh}°" if max_sh is not None else "N/A", help="Maximum arm elevation reach during activity.")
+        with arm_c3:
+            st.metric("📐 Avg Elbow Flexion", f"{avg_el}°" if avg_el is not None else "N/A", help="Elbow joint angle formed by upper arm and forearm.")
+        with arm_c4:
+            st.metric("Arms Elevated (>45°)", f"{sh_45}% ({report.shoulder_above_45_duration}s)", help="Percentage and duration of work spent with arms elevated >45°.")
+
+        # Arm Angle Visualizations (Gauge + Multi-Line Timeline)
+        arm_g1, arm_g2 = st.columns([1, 2])
+        with arm_g1:
+            st.markdown("#### 🧭 Shoulder Elevation Gauge")
+            fig_arm_gauge = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=float(avg_sh or 0.0),
+                domain={'x': [0, 1], 'y': [0, 1]},
+                title={'text': "Avg Upper Arm Elevation (°)", 'font': {'size': 15}},
+                gauge={
+                    'axis': {'range': [0, 140], 'tickwidth': 1, 'tickcolor': "white"},
+                    'bar': {'color': "#8B5CF6", 'thickness': 0.25},
+                    'bgcolor': "rgba(0,0,0,0)",
+                    'borderwidth': 2,
+                    'bordercolor': "#334155",
+                    'steps': [
+                        {'range': [0, 20], 'color': "rgba(16, 185, 129, 0.4)"},   # Safe Green (<20°)
+                        {'range': [20, 45], 'color': "rgba(245, 158, 11, 0.4)"},  # Moderate Yellow (20°-45°)
+                        {'range': [45, 90], 'color': "rgba(239, 68, 68, 0.5)"},   # Severe Red (45°-90°)
+                        {'range': [90, 140], 'color': "rgba(217, 70, 239, 0.6)"}, # Overhead Violet (>90°)
+                    ],
+                    'threshold': {
+                        'line': {'color': "red", 'width': 4},
+                        'thickness': 0.75,
+                        'value': 45.0
+                    }
+                }
+            ))
+            fig_arm_gauge.update_layout(height=260, margin=dict(l=20, r=20, t=30, b=20), paper_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig_arm_gauge, use_container_width=True)
+
+        with arm_g2:
+            st.markdown("#### 📈 Continuous Arm & Elbow Angle Curve Over Time")
+            arm_time_series = getattr(ps, 'arm_angle_time_series', []) if ps else []
+            if arm_time_series:
+                arm_df = pd.DataFrame(arm_time_series)
+                fig_arm_curve = px.line(
+                    arm_df,
+                    x="timestamp",
+                    y=["shoulder_angle", "elbow_angle"],
+                    labels={"timestamp": "Time (Seconds)", "value": "Joint Angle (°)", "variable": "Angle Metric"},
+                    color_discrete_map={"shoulder_angle": "#8B5CF6", "elbow_angle": "#38BDF8"}
+                )
+                fig_arm_curve.add_hline(y=45, line_dash="dash", line_color="#EF4444", annotation_text="Arm Strain Limit (45°)")
+                fig_arm_curve.add_hline(y=90, line_dash="dash", line_color="#D946EF", annotation_text="Overhead Work (90°)")
+                fig_arm_curve.update_layout(height=260, margin=dict(l=20, r=20, t=30, b=20), legend_title_text="")
+                st.plotly_chart(fig_arm_curve, use_container_width=True)
+            else:
+                st.info("Arm posture time-series recorded across video frames.")
+
+        st.markdown("---")
+
+        # ── SECTION 3: Dedicated Postural Angle & Plantation Stooping Assessment ──
         st.markdown("### 📐 Farmer Bending & Postural Angle Assessment (Plantation / Field Work)")
         
         avg_flex = report.posture_summary.avg_trunk_flexion if report.posture_summary else 0.0
@@ -346,22 +449,22 @@ if "pipeline_result" in st.session_state:
             else:
                 st.info("Continuous angle timeline recorded across video playback.")
 
-        # ── 11 Parameters Display Table ──
+        # ── SECTION 4: 11 Parameters Display Table ──
         st.markdown("### 📋 The 11 Ergonomic & Drudgery Parameters")
         
         param_data = [
-            {"#": "1", "Parameter": "Sitting Duration", "Extracted Value": f"{report.sitting_duration}s ({round(report.sitting_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
-            {"#": "1b", "Parameter": "Squatting Duration", "Extracted Value": f"{getattr(report, 'squatting_duration', 0.0)}s ({round(getattr(report, 'squatting_duration', 0.0)/max(1, report.total_tracked_time)*100, 1)}%)"},
-            {"#": "2", "Parameter": "Standing Duration", "Extracted Value": f"{report.standing_duration}s ({round(report.standing_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
-            {"#": "3", "Parameter": "Bending Duration", "Extracted Value": f"{report.bending_duration}s ({round(report.bending_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
-            {"#": "4", "Parameter": "Walking Duration", "Extracted Value": f"{report.walking_duration}s ({round(report.walking_duration/max(1, report.total_tracked_time)*100, 1)}%)"},
+            {"#": "1", "Parameter": "Sitting Duration & Reps", "Extracted Value": f"{report.sitting_duration}s ({round(report.sitting_duration/max(1, report.total_tracked_time)*100, 1)}%) | Reps: {getattr(report, 'sitting_reps', 0)}"},
+            {"#": "1b", "Parameter": "Squatting Duration & Reps", "Extracted Value": f"{getattr(report, 'squatting_duration', 0.0)}s ({round(getattr(report, 'squatting_duration', 0.0)/max(1, report.total_tracked_time)*100, 1)}%) | Reps: {getattr(report, 'squatting_reps', 0)}"},
+            {"#": "2", "Parameter": "Standing Duration & Reps", "Extracted Value": f"{report.standing_duration}s ({round(report.standing_duration/max(1, report.total_tracked_time)*100, 1)}%) | Reps: {getattr(report, 'standing_reps', 0)}"},
+            {"#": "3", "Parameter": "Bending Duration & Reps", "Extracted Value": f"{report.bending_duration}s ({round(report.bending_duration/max(1, report.total_tracked_time)*100, 1)}%) | Reps: {getattr(report, 'bending_reps', 0)} (Severe: {report.severe_bending_duration}s)"},
+            {"#": "4", "Parameter": "Walking Duration", "Extracted Value": f"{report.walking_duration}s ({round(report.walking_duration/max(1, report.total_tracked_time)*100, 1)}%) | Reps: {getattr(report, 'walking_reps', 0)}"},
             {"#": "5", "Parameter": "Load Carried", "Extracted Value": f"{report.total_load_events} carrying events detected"},
             {"#": "6", "Parameter": "Repetitive Movement", "Extracted Value": f"{report.repetitive_movement.cycles_per_minute} cycles/min on {report.repetitive_movement.primary_joint} ({report.repetitive_movement.frequency_hz} Hz)" if report.repetitive_movement and report.repetitive_movement.is_repetitive else "None detected"},
             {"#": "7", "Parameter": "Number of Trips", "Extracted Value": f"{report.trip_count_result.trip_count if report.trip_count_result else 0} trips ({report.trip_count_result.total_distance_pixels if report.trip_count_result else 0} px travel)"},
             {"#": "8", "Parameter": "Tools/Equipment Used", "Extracted Value": ", ".join([t.tool_name for t in report.tools_used]) if report.tools_used else "None detected"},
-            {"#": "9", "Parameter": "Posture & Angles", "Extracted Value": f"Avg Trunk Flexion: {report.posture_summary.avg_trunk_flexion}° | Max Trunk: {report.posture_summary.max_trunk_flexion}° | Knee: {getattr(report.posture_summary, 'avg_knee_angle', 'N/A')}° | Hip: {report.posture_summary.avg_hip_angle}°" if report.posture_summary else "N/A"},
+            {"#": "9", "Parameter": "Posture & Angles (Trunk & Arms)", "Extracted Value": f"Trunk: {report.posture_summary.avg_trunk_flexion}° | Shoulder Elv: {getattr(report.posture_summary, 'avg_shoulder_angle', 'N/A')}° | Elbow: {getattr(report.posture_summary, 'avg_elbow_angle', 'N/A')}° | Knee: {getattr(report.posture_summary, 'avg_knee_angle', 'N/A')}°" if report.posture_summary else "N/A"},
             {"#": "10", "Parameter": "Continuous Work Duration", "Extracted Value": f"Longest: {report.longest_work_bout}s | Avg: {report.avg_work_bout}s ({len(report.work_bouts)} bouts)"},
-            {"#": "11", "Parameter": "Rest Duration", "Extracted Value": f"Total Rest: {report.total_rest_duration}s across {report.rest_count} rest periods"},
+            {"#": "11", "Parameter": "Rest Duration & Pauses", "Extracted Value": f"Total Rest: {report.total_rest_duration}s across {report.rest_count} rest periods"},
         ]
         
         st.dataframe(pd.DataFrame(param_data), use_container_width=True, hide_index=True)
