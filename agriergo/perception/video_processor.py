@@ -92,6 +92,8 @@ class VideoProcessor:
     ) -> Generator[Tuple[int, float, np.ndarray], None, None]:
         """
         Yield frames sampled at the specified or adaptive effective FPS.
+        Uses robust sequential stream decoding (grab skipping) to prevent HEVC/H.265
+        and MPEG-TS PPS/POC seek corruption errors.
 
         Args:
             fps: Target sampling rate (frames per second). If None, uses get_adaptive_fps().
@@ -113,19 +115,38 @@ class VideoProcessor:
             raise RuntimeError(f"Cannot open video: {self.video_path}")
 
         frame_idx = 0
-        try:
-            while frame_idx < meta.total_frames:
-                if frame_interval > 1:
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+        consecutive_failures = 0
+        max_failures = 30
 
+        try:
+            while True:
                 ret, frame = cap.read()
                 if not ret or frame is None:
-                    break
+                    consecutive_failures += 1
+                    if consecutive_failures >= max_failures or (meta.total_frames > 0 and frame_idx >= meta.total_frames):
+                        break
+                    frame_idx += 1
+                    continue
 
-                timestamp = frame_idx / meta.fps if meta.fps > 0 else 0.0
+                consecutive_failures = 0
+                # Robust timestamp calculation
+                pos_msec = cap.get(cv2.CAP_PROP_POS_MSEC)
+                if pos_msec > 0:
+                    timestamp = pos_msec / 1000.0
+                else:
+                    timestamp = frame_idx / meta.fps if meta.fps > 0 else 0.0
+
                 yield frame_idx, round(timestamp, 3), frame
+                frame_idx += 1
 
-                frame_idx += frame_interval
+                # Fast skip the next (frame_interval - 1) frames using cap.grab()
+                # This maintains valid HEVC/H.265 GOP reference chains without PPS/POC errors
+                if frame_interval > 1:
+                    for _ in range(frame_interval - 1):
+                        grabbed = cap.grab()
+                        frame_idx += 1
+                        if not grabbed:
+                            break
         finally:
             cap.release()
 
