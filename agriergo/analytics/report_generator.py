@@ -190,6 +190,14 @@ class ReportGenerator:
                             float(wr.posture_summary.max_trunk_flexion)
                             if wr.posture_summary and wr.posture_summary.max_trunk_flexion is not None else None
                         ),
+                        "avg_knee_angle_degrees": (
+                            float(wr.posture_summary.avg_knee_angle)
+                            if wr.posture_summary and getattr(wr.posture_summary, 'avg_knee_angle', None) is not None else None
+                        ),
+                        "angle_time_series": (
+                            getattr(wr.posture_summary, 'angle_time_series', [])
+                            if wr.posture_summary else []
+                        ),
                     },
                     "10_continuous_work": {
                         "longest_bout_seconds": float(wr.longest_work_bout),

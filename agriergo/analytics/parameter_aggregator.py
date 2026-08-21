@@ -40,12 +40,14 @@ class ToolUsageRecord:
 
 @dataclass
 class PostureSummary:
-    """Summary of posture data for reporting."""
+    """Summary of posture and ergonomic angle data for reporting."""
     dominant_posture: PostureLabel
     posture_distribution: Dict[str, float]   # label → percentage
-    avg_trunk_flexion: Optional[float]
-    max_trunk_flexion: Optional[float]
-    avg_hip_angle: Optional[float]
+    avg_trunk_flexion: Optional[float] = None
+    max_trunk_flexion: Optional[float] = None
+    avg_hip_angle: Optional[float] = None
+    avg_knee_angle: Optional[float] = None
+    angle_time_series: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -137,6 +139,8 @@ class ParameterAggregator:
         load_detections: List[Dict[str, Any]],      # [{timestamp, object_class}, ...]
         trunk_flexions: List[Optional[float]],
         hip_angles: List[Optional[float]],
+        knee_angles: Optional[List[Optional[float]]] = None,
+        timestamps: Optional[List[float]] = None,
     ) -> WorkerReport:
         """
         Aggregate all data sources into a WorkerReport.
@@ -150,6 +154,8 @@ class ParameterAggregator:
             load_detections: List of load detection events.
             trunk_flexions: Per-frame trunk flexion values.
             hip_angles: Per-frame hip angle values.
+            knee_angles: Per-frame knee angle values.
+            timestamps: Per-frame timestamps.
 
         Returns:
             Complete WorkerReport with all 11 parameters.
@@ -202,7 +208,7 @@ class ParameterAggregator:
 
         # ── Parameter 9: Posture summary ──
         report.posture_summary = self._compute_posture_summary(
-            activity_bouts, trunk_flexions, hip_angles
+            activity_bouts, trunk_flexions, hip_angles, knee_angles, timestamps
         )
 
         # ── Parameters 10 & 11: Work and rest durations ──
@@ -248,8 +254,10 @@ class ParameterAggregator:
         bouts: List[ActivityBout],
         trunk_flexions: List[Optional[float]],
         hip_angles: List[Optional[float]],
+        knee_angles: Optional[List[Optional[float]]] = None,
+        timestamps: Optional[List[float]] = None,
     ) -> PostureSummary:
-        """Compute posture distribution and statistics."""
+        """Compute posture distribution, ergonomic angle statistics, and time-series."""
         # Duration per posture
         posture_durations: Dict[str, float] = {}
         total_duration = 0.0
@@ -277,10 +285,32 @@ class ParameterAggregator:
         valid_hips = [a for a in hip_angles if a is not None]
         avg_hip = round(np.mean(valid_hips), 1) if valid_hips else None
 
+        # Knee angle stats
+        knee_list = knee_angles or []
+        valid_knees = [k for k in knee_list if k is not None]
+        avg_knee = round(np.mean(valid_knees), 1) if valid_knees else None
+
+        # Angle Time Series for interactive visual plotting
+        angle_series = []
+        if timestamps and trunk_flexions:
+            for idx, ts in enumerate(timestamps):
+                tf = trunk_flexions[idx] if idx < len(trunk_flexions) else None
+                ha = hip_angles[idx] if idx < len(hip_angles) else None
+                ka = knee_list[idx] if idx < len(knee_list) else None
+                if tf is not None or ha is not None or ka is not None:
+                    angle_series.append({
+                        "timestamp": round(ts, 2),
+                        "trunk_flexion": round(tf, 1) if tf is not None else None,
+                        "hip_angle": round(ha, 1) if ha is not None else None,
+                        "knee_angle": round(ka, 1) if ka is not None else None,
+                    })
+
         return PostureSummary(
             dominant_posture=PostureLabel(dominant),
             posture_distribution=distribution,
             avg_trunk_flexion=avg_flexion,
             max_trunk_flexion=max_flexion,
             avg_hip_angle=avg_hip,
+            avg_knee_angle=avg_knee,
+            angle_time_series=angle_series,
         )

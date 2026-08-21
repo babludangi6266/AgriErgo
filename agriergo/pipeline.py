@@ -140,6 +140,8 @@ class AgriErgoPipeline:
         worker_load_detections: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
         worker_trunk_flexions: Dict[int, List[Optional[float]]] = defaultdict(list)
         worker_hip_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
+        worker_knee_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
+        worker_timestamps: Dict[int, List[float]] = defaultdict(list)
         worker_elbow_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
         worker_wrist_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
         worker_shoulder_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
@@ -193,6 +195,8 @@ class AgriErgoPipeline:
                 # Store multi-joint angle series
                 worker_trunk_flexions[wid].append(angles.trunk_flexion)
                 worker_hip_angles[wid].append(angles.avg_hip_angle)
+                worker_knee_angles[wid].append(angles.avg_knee_angle)
+                worker_timestamps[wid].append(timestamp)
                 worker_elbow_angles[wid].append(
                     angles.left_elbow_angle or angles.right_elbow_angle
                 )
@@ -256,6 +260,8 @@ class AgriErgoPipeline:
         unified_load_detections: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
         unified_trunk_flexions: Dict[int, List[Optional[float]]] = defaultdict(list)
         unified_hip_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
+        unified_knee_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
+        unified_timestamps: Dict[int, List[float]] = defaultdict(list)
         unified_elbow_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
         unified_wrist_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
         unified_shoulder_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
@@ -270,6 +276,8 @@ class AgriErgoPipeline:
             unified_load_detections[unified_id].extend(worker_load_detections[raw_id])
             unified_trunk_flexions[unified_id].extend(worker_trunk_flexions[raw_id])
             unified_hip_angles[unified_id].extend(worker_hip_angles[raw_id])
+            unified_knee_angles[unified_id].extend(worker_knee_angles[raw_id])
+            unified_timestamps[unified_id].extend(worker_timestamps[raw_id])
             unified_elbow_angles[unified_id].extend(worker_elbow_angles[raw_id])
             unified_wrist_angles[unified_id].extend(worker_wrist_angles[raw_id])
             unified_shoulder_angles[unified_id].extend(worker_shoulder_angles[raw_id])
@@ -318,6 +326,8 @@ class AgriErgoPipeline:
                 load_detections=unified_load_detections[wid],
                 trunk_flexions=unified_trunk_flexions[wid],
                 hip_angles=unified_hip_angles[wid],
+                knee_angles=unified_knee_angles[wid],
+                timestamps=unified_timestamps[wid],
             )
 
             # Compute overall REBA score

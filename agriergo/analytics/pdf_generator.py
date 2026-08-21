@@ -182,7 +182,7 @@ class PDFReportGenerator:
                 [Paragraph("6. Repetitive Motion", body_style), Paragraph(f"{wr.repetitive_movement.cycles_per_minute} cycles/min" if wr.repetitive_movement and wr.repetitive_movement.is_repetitive else "None detected", body_style)],
                 [Paragraph("7. Field Trips Count", body_style), Paragraph(f"{wr.trip_count_result.trip_count if wr.trip_count_result else 0} trips", body_style)],
                 [Paragraph("8. Tools/Equipment Detected", body_style), Paragraph(", ".join([t.tool_name for t in wr.tools_used]) if wr.tools_used else "None", body_style)],
-                [Paragraph("9. Trunk Flexion Angle", body_style), Paragraph(f"Avg: {wr.posture_summary.avg_trunk_flexion if wr.posture_summary else 'N/A'} deg | Max: {wr.posture_summary.max_trunk_flexion if wr.posture_summary else 'N/A'} deg", body_style)],
+                [Paragraph("9. Posture and Joint Angles", body_style), Paragraph(f"Avg Trunk: {wr.posture_summary.avg_trunk_flexion if wr.posture_summary else 'N/A'} deg | Max Trunk: {wr.posture_summary.max_trunk_flexion if wr.posture_summary else 'N/A'} deg | Knee: {getattr(wr.posture_summary, 'avg_knee_angle', 'N/A')} deg", body_style)],
                 [Paragraph("10. Continuous Work Bout", body_style), Paragraph(f"Longest: {wr.longest_work_bout}s | Avg: {wr.avg_work_bout}s", body_style)],
                 [Paragraph("11. Rest Duration and Count", body_style), Paragraph(f"Total Rest: {wr.total_rest_duration}s ({wr.rest_count} rest periods)", body_style)],
             ]

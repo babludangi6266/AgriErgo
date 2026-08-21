@@ -267,6 +267,85 @@ if "pipeline_result" in st.session_state:
         if recs:
             st.info(f"💡 **Ergonomic Intervention Recommendation:** {recs[0]}")
 
+        # ── Dedicated Postural Angle & Plantation Stooping Assessment ──
+        st.markdown("### 📐 Farmer Bending & Postural Angle Assessment (Plantation / Field Work)")
+        
+        avg_flex = report.posture_summary.avg_trunk_flexion if report.posture_summary else 0.0
+        max_flex = report.posture_summary.max_trunk_flexion if report.posture_summary else 0.0
+        avg_knee = getattr(report.posture_summary, 'avg_knee_angle', None) if report.posture_summary else None
+        avg_hip = report.posture_summary.avg_hip_angle if report.posture_summary else 0.0
+
+        # Angle Category
+        if avg_flex is not None and avg_flex > 60.0:
+            angle_cat = "🔴 Severe Bending / Stooping (High Hazard)"
+        elif avg_flex is not None and avg_flex > 20.0:
+            angle_cat = "🟡 Moderate Stooping (Monitor Exposure)"
+        else:
+            angle_cat = "🟢 Safe Upright / Neutral Posture"
+
+        ang_col1, ang_col2, ang_col3, ang_col4 = st.columns(4)
+        with ang_col1:
+            st.metric("📏 Average Bending Angle", f"{avg_flex}°" if avg_flex is not None else "N/A", help="Average forward torso angle relative to vertical.")
+        with ang_col2:
+            st.metric("⚡ Peak Bending Angle", f"{max_flex}°" if max_flex is not None else "N/A", help="Maximum stoop angle reached during field work.")
+        with ang_col3:
+            st.metric("🦵 Average Knee Angle", f"{avg_knee}°" if avg_knee is not None else "N/A", help="Straight legs (>140°) indicate bending/stooping; bent legs (<90°) indicate squatting.")
+        with ang_col4:
+            st.metric("Severe Stoop Duration (>60°)", f"{report.severe_bending_duration}s", help="Cumulative time spent in severe trunk flexion >60°.")
+
+        st.caption(f"**Bending Ergonomics Assessment:** {angle_cat}")
+
+        # Interactive Angle Gauge & Continuous Bending Timeline
+        angle_series = getattr(report.posture_summary, 'angle_time_series', []) if report.posture_summary else []
+        g_col1, g_col2 = st.columns([1, 2])
+
+        with g_col1:
+            st.markdown("#### 🧭 Trunk Angle Gauge")
+            fig_gauge = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=float(avg_flex or 0.0),
+                domain={'x': [0, 1], 'y': [0, 1]},
+                title={'text': "Avg Trunk Bending (°)", 'font': {'size': 16}},
+                gauge={
+                    'axis': {'range': [0, 120], 'tickwidth': 1, 'tickcolor': "white"},
+                    'bar': {'color': "#3B82F6", 'thickness': 0.25},
+                    'bgcolor': "rgba(0,0,0,0)",
+                    'borderwidth': 2,
+                    'bordercolor': "#334155",
+                    'steps': [
+                        {'range': [0, 20], 'color': "rgba(16, 185, 129, 0.4)"},   # Safe Green
+                        {'range': [20, 60], 'color': "rgba(245, 158, 11, 0.4)"},  # Moderate Yellow
+                        {'range': [60, 120], 'color': "rgba(239, 68, 68, 0.5)"},  # Severe Red
+                    ],
+                    'threshold': {
+                        'line': {'color': "red", 'width': 4},
+                        'thickness': 0.75,
+                        'value': 60.0
+                    }
+                }
+            ))
+            fig_gauge.update_layout(height=260, margin=dict(l=20, r=20, t=30, b=20), paper_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig_gauge, use_container_width=True)
+
+        with g_col2:
+            st.markdown("#### 📈 Continuous Bending Angle Curve Over Time")
+            if angle_series:
+                angle_df = pd.DataFrame(angle_series)
+                fig_angle_curve = px.line(
+                    angle_df,
+                    x="timestamp",
+                    y="trunk_flexion",
+                    labels={"timestamp": "Time (Seconds)", "trunk_flexion": "Trunk Flexion Angle (°)"},
+                    color_discrete_sequence=["#F59E0B"]
+                )
+                fig_angle_curve.add_hline(y=20, line_dash="dash", line_color="#10B981", annotation_text="Safe Upright (20°)")
+                fig_angle_curve.add_hline(y=60, line_dash="dash", line_color="#EF4444", annotation_text="Severe Stoop Limit (60°)")
+                fig_angle_curve.update_yaxes(range=[0, max(100, float(max_flex or 90) + 10)])
+                fig_angle_curve.update_layout(height=260, margin=dict(l=20, r=20, t=30, b=20))
+                st.plotly_chart(fig_angle_curve, use_container_width=True)
+            else:
+                st.info("Continuous angle timeline recorded across video playback.")
+
         # ── 11 Parameters Display Table ──
         st.markdown("### 📋 The 11 Ergonomic & Drudgery Parameters")
         
@@ -280,7 +359,7 @@ if "pipeline_result" in st.session_state:
             {"#": "6", "Parameter": "Repetitive Movement", "Extracted Value": f"{report.repetitive_movement.cycles_per_minute} cycles/min on {report.repetitive_movement.primary_joint} ({report.repetitive_movement.frequency_hz} Hz)" if report.repetitive_movement and report.repetitive_movement.is_repetitive else "None detected"},
             {"#": "7", "Parameter": "Number of Trips", "Extracted Value": f"{report.trip_count_result.trip_count if report.trip_count_result else 0} trips ({report.trip_count_result.total_distance_pixels if report.trip_count_result else 0} px travel)"},
             {"#": "8", "Parameter": "Tools/Equipment Used", "Extracted Value": ", ".join([t.tool_name for t in report.tools_used]) if report.tools_used else "None detected"},
-            {"#": "9", "Parameter": "Posture & Angles", "Extracted Value": f"Avg Trunk Flexion: {report.posture_summary.avg_trunk_flexion}° | Max: {report.posture_summary.max_trunk_flexion}°" if report.posture_summary else "N/A"},
+            {"#": "9", "Parameter": "Posture & Angles", "Extracted Value": f"Avg Trunk Flexion: {report.posture_summary.avg_trunk_flexion}° | Max Trunk: {report.posture_summary.max_trunk_flexion}° | Knee: {getattr(report.posture_summary, 'avg_knee_angle', 'N/A')}° | Hip: {report.posture_summary.avg_hip_angle}°" if report.posture_summary else "N/A"},
             {"#": "10", "Parameter": "Continuous Work Duration", "Extracted Value": f"Longest: {report.longest_work_bout}s | Avg: {report.avg_work_bout}s ({len(report.work_bouts)} bouts)"},
             {"#": "11", "Parameter": "Rest Duration", "Extracted Value": f"Total Rest: {report.total_rest_duration}s across {report.rest_count} rest periods"},
         ]
