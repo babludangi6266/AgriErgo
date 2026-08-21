@@ -397,12 +397,14 @@ class AgriErgoPipeline:
             # Agricultural Task Auto-Classification
             if hasattr(self, 'task_classifier'):
                 dist = report.posture_summary.posture_distribution if report.posture_summary else {}
+                sh_90 = report.posture_summary.shoulder_above_90_pct if report.posture_summary else 0.0
                 task_res = self.task_classifier.classify_task(
                     posture_distribution=dist,
                     cycles_per_minute=rep_result.cycles_per_minute if rep_result else 0.0,
                     repetitive_joint=rep_result.primary_joint if rep_result else None,
                     detected_tools=[t.tool_name for t in report.tools_used],
                     total_load_events=report.total_load_events,
+                    shoulder_above_90_pct=float(sh_90 or 0.0),
                 )
                 report.classified_task = task_res.primary_task
                 report.task_confidence = task_res.confidence

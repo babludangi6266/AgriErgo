@@ -63,9 +63,10 @@ class TaskClassifier:
         repetitive_joint: Optional[str],
         detected_tools: List[str],
         total_load_events: int,
+        shoulder_above_90_pct: float = 0.0,
     ) -> TaskClassificationResult:
         """
-        Classify field activity task.
+        Classify field activity task using posture geometry and repetition heuristics.
         """
         bending_pct = posture_distribution.get("bending", 0.0)
         squatting_pct = posture_distribution.get("squatting", 0.0)
@@ -85,6 +86,7 @@ class TaskClassifier:
                 )
 
         # Rule 2: Manual Weeding / Ground Harvesting
+        # Requires significant bending + squatting (ground-level work)
         if (bending_pct + squatting_pct) > 40.0:
             info = self.TASKS["Manual Weeding / Ground Harvesting"]
             conf = min(0.95, 0.60 + ((bending_pct + squatting_pct) / 200.0))
@@ -96,24 +98,31 @@ class TaskClassifier:
             )
 
         # Rule 3: Land Tilling / Hoeing
+        # Requires repetitive trunk/elbow motion AND meaningful bending posture
+        # A worker who is 96% standing or 71% walking is NOT hoeing
         if cpm > 20.0 and repetitive_joint in ["trunk", "elbow"]:
-            info = self.TASKS["Land Tilling / Hoeing"]
-            return TaskClassificationResult(
-                primary_task="Land Tilling / Hoeing",
-                confidence=0.85,
-                description=info["desc"],
-                ergonomic_hazard_profile=info["hazard"],
-            )
+            if bending_pct > 15.0 or (bending_pct + squatting_pct) > 20.0:
+                info = self.TASKS["Land Tilling / Hoeing"]
+                conf = min(0.92, 0.70 + (bending_pct / 100.0))
+                return TaskClassificationResult(
+                    primary_task="Land Tilling / Hoeing",
+                    confidence=round(conf, 2),
+                    description=info["desc"],
+                    ergonomic_hazard_profile=info["hazard"],
+                )
 
         # Rule 4: Overhead Fruit Harvesting / Picking
+        # Requires standing + shoulder repetition + actual arm elevation above shoulder
         if standing_pct > 50.0 and cpm > 15.0 and repetitive_joint == "shoulder":
-            info = self.TASKS["Overhead Fruit Harvesting / Picking"]
-            return TaskClassificationResult(
-                primary_task="Overhead Fruit Harvesting / Picking",
-                confidence=0.82,
-                description=info["desc"],
-                ergonomic_hazard_profile=info["hazard"],
-            )
+            if shoulder_above_90_pct > 5.0:
+                info = self.TASKS["Overhead Fruit Harvesting / Picking"]
+                conf = min(0.93, 0.70 + (shoulder_above_90_pct / 100.0))
+                return TaskClassificationResult(
+                    primary_task="Overhead Fruit Harvesting / Picking",
+                    confidence=round(conf, 2),
+                    description=info["desc"],
+                    ergonomic_hazard_profile=info["hazard"],
+                )
 
         # Rule 5: Crop Pruning & Cutting
         if cpm > 25.0 and repetitive_joint == "wrist":
@@ -133,3 +142,4 @@ class TaskClassifier:
             description=info["desc"],
             ergonomic_hazard_profile=info["hazard"],
         )
+
