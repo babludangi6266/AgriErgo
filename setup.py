@@ -21,5 +21,7 @@ setup(
         "streamlit>=1.28.0",
         "plotly>=5.18.0",
         "tqdm>=4.66.0",
+        "google-genai>=1.0.0",
+        "Pillow>=10.0.0",
     ],
 )

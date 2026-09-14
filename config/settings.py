@@ -40,6 +40,18 @@ OBJECT_DETECTION_STRIDE = 10            # Run object detector every 10th sampled
 ISO11226_SEVERE_STOOPING_ANGLE = 60.0    # Bending angle >60 deg is severe
 ISO11226_MAX_CUMULATIVE_STOOPING_MINS = 4.0 # Sustained >4 mins per half hour triggers hazard warning
 
+# ──────────────────────────────────────────────
+# AI / Gemini Multimodal Vision Configuration
+# ──────────────────────────────────────────────
+GEMINI_MODEL = "gemini-2.0-flash"          # Fast multimodal model for video frame analysis
+GEMINI_MAX_FRAMES_PER_WORKER = 12          # Max keyframes sent to AI per worker
+GEMINI_FRAME_RESIZE = (512, 512)           # Resize frames for token efficiency
+GEMINI_TEMPERATURE = 0.3                   # Low temperature for deterministic analysis
+GEMINI_MAX_OUTPUT_TOKENS = 2048            # Max response tokens from Gemini
+AI_ANALYSIS_ENABLED_DEFAULT = True         # Enable AI analysis by default if API key is set
+GEMINI_API_KEY_ENV = "GEMINI_API_KEY"      # Environment variable name for API key
+
+
 def get_adaptive_fps(duration_seconds: float, speed_mode: str = "Balanced Fast") -> float:
     """
     Auto-tune sample FPS for instant execution (<3-8s) on short, 10-minute, and 30-minute videos.

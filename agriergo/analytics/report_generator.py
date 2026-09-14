@@ -293,6 +293,19 @@ class ReportGenerator:
                     "iso_11226_violated": bool(getattr(wr, 'iso_11226_violated', False)),
                     "iso_11226_message": str(getattr(wr, 'iso_11226_message', '')),
                 },
+                "ai_analysis": {
+                    "enabled": bool(getattr(wr, 'ai_analysis_success', False)),
+                    "model_used": str(getattr(wr, 'ai_model_used', None) or "none"),
+                    "ai_task_classification": str(getattr(wr, 'ai_task_classification', None) or "N/A"),
+                    "ai_task_confidence": float(getattr(wr, 'ai_task_confidence', 0.0) or 0.0),
+                    "ai_crop_detected": str(getattr(wr, 'ai_crop_detected', None) or "N/A"),
+                    "ai_terrain_type": str(getattr(wr, 'ai_terrain_type', None) or "N/A"),
+                    "ai_severity_rating": str(getattr(wr, 'ai_severity_rating', None) or "N/A"),
+                    "ai_risk_narrative": str(getattr(wr, 'ai_risk_narrative', None) or ""),
+                    "ai_recommendations": list(getattr(wr, 'ai_recommendations', [])),
+                    "ai_tools_identified": list(getattr(wr, 'ai_tools_identified', [])),
+                    "ai_working_conditions": str(getattr(wr, 'ai_working_conditions', None) or ""),
+                },
                 "activity_timeline": [
                     {
                         "activity": str(bout.activity.value),

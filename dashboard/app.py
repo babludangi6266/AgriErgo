@@ -133,6 +133,27 @@ speed_mode = st.sidebar.radio(
 
 sample_fps = 5.0
 
+# ── AI / Gemini Configuration ──
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🧠 AI Analysis (Gemini)")
+enable_ai = st.sidebar.toggle(
+    "🤖 Enable AI Analysis",
+    value=False,
+    help="Use Google Gemini AI to analyze video frames for intelligent task classification, risk narratives, and recommendations."
+)
+gemini_api_key = ""
+if enable_ai:
+    gemini_api_key = st.sidebar.text_input(
+        "🔑 Gemini API Key",
+        type="password",
+        placeholder="Enter your Google Gemini API key",
+        help="Get your free API key from https://aistudio.google.com/apikey"
+    )
+    if not gemini_api_key:
+        st.sidebar.warning("⚠️ Enter your Gemini API key to enable AI analysis.")
+    else:
+        st.sidebar.success("✅ API key configured")
+
 uploaded_file = st.file_uploader(
     "Upload Field-Work Video",
     type=[fmt.replace('.', '') for fmt in SUPPORTED_FORMATS],
@@ -175,6 +196,8 @@ if uploaded_file is not None:
                     video_path,
                     progress_callback=update_progress,
                     speed_mode=speed_mode,
+                    enable_ai=enable_ai and bool(gemini_api_key),
+                    gemini_api_key=gemini_api_key if enable_ai else None,
                 )
             except TypeError:
                 result = pipeline.process(
@@ -267,6 +290,49 @@ if "pipeline_result" in st.session_state:
         recs = getattr(report, 'drudgery_recommendations', [])
         if recs:
             st.info(f"💡 **Ergonomic Intervention Recommendation:** {recs[0]}")
+
+        # ── AI Ergonomic Insights Panel ──
+        if getattr(report, 'ai_analysis_success', False):
+            with st.expander("🧠 AI Ergonomic Insights (Gemini)", expanded=True):
+                ai_col1, ai_col2, ai_col3, ai_col4 = st.columns(4)
+                with ai_col1:
+                    ai_conf = round((report.ai_task_confidence or 0) * 100)
+                    st.metric("🎯 AI Task", report.ai_task_classification or "N/A", help=f"Confidence: {ai_conf}%")
+                with ai_col2:
+                    st.metric("🌾 Crop Detected", report.ai_crop_detected or "N/A")
+                with ai_col3:
+                    severity = report.ai_severity_rating or "N/A"
+                    severity_colors = {"Low": "🟢", "Moderate": "🟡", "High": "🟠", "Critical": "🔴"}
+                    severity_icon = severity_colors.get(severity, "⚪")
+                    st.metric(f"{severity_icon} AI Severity", severity)
+                with ai_col4:
+                    st.metric("🏞️ Terrain", report.ai_terrain_type or "N/A")
+
+                # Risk Narrative
+                if report.ai_risk_narrative:
+                    st.markdown(f"""
+                    <div style="background: linear-gradient(135deg, #1E1B4B, #312E81); padding: 16px; border-radius: 10px; border-left: 4px solid #818CF8; margin: 8px 0;">
+                        <p style="color: #C7D2FE; font-size: 0.85rem; font-weight: 600; margin-bottom: 4px;">🧠 AI RISK ASSESSMENT</p>
+                        <p style="color: #E0E7FF; font-size: 0.95rem; line-height: 1.5;">{report.ai_risk_narrative}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                # Working Conditions
+                if report.ai_working_conditions:
+                    st.caption(f"🌤️ **Field Conditions:** {report.ai_working_conditions}")
+
+                # AI Tools vs Detection Tools comparison
+                ai_tools = report.ai_tools_identified or []
+                if ai_tools:
+                    st.caption(f"🔧 **AI-Identified Tools:** {', '.join(ai_tools)}")
+
+                # Recommendations
+                if report.ai_recommendations:
+                    st.markdown("**💡 AI Recommendations:**")
+                    for i, rec in enumerate(report.ai_recommendations, 1):
+                        st.markdown(f"  {i}. {rec}")
+
+                st.caption(f"Model: `{report.ai_model_used}` | AI Confidence: {ai_conf}%")
 
         # ── SECTION 1: Standardised 1-Hour Activity Analysis ──
         st.markdown("### ⏱️ Standardisation for 1-Hour Activity Baseline")

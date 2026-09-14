@@ -1,25 +1,31 @@
 # AgriErgo — Video-Based Agricultural Ergonomics & Drudgery Assessment Platform
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![Google Gemini](https://img.shields.io/badge/Google%20Gemini-2.0%20Flash-4285F4.svg?logo=google&logoColor=white)](https://ai.google.dev/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.30%2B-FF4B4B.svg?logo=streamlit&logoColor=white)](https://streamlit.io)
 [![YOLOv8-Pose](https://img.shields.io/badge/Ultralytics-YOLOv8--Pose-00599C.svg?logo=ultralytics&logoColor=white)](https://docs.ultralytics.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Tests](https://img.shields.io/badge/Tests-29%2F29%20Passed-brightgreen.svg)]()
 
-**AgriErgo** is an AI-powered computer vision and biomechanical analysis platform designed specifically for agricultural ergonomics. It automates the assessment of field worker postures, repetitive motions, physical fatigue, and musculoskeletal disorder (MSD) risks directly from monocular video footage without requiring wearable motion capture sensors.
+**AgriErgo** is an AI-powered computer vision and biomechanical analysis platform designed specifically for agricultural ergonomics. It automates the assessment of field worker postures, repetitive motions, physical fatigue, and musculoskeletal disorder (MSD) risks directly from monocular video footage without requiring wearable motion capture sensors, augmented by **Google Gemini 2.0 Flash Multimodal AI** for intelligent visual task inference and natural language hazard assessment.
 
 ---
 
 ## 🛠️ Technology Stack
 
-AgriErgo combines modern deep learning computer vision with validated occupational biomechanics and high-performance asynchronous web backends:
+AgriErgo combines state-of-the-art multimodal generative AI, deep learning computer vision, validated occupational biomechanics, and high-performance asynchronous web backends:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                             AGRIERGO TECH STACK                             │
 ├───────────────────────┬─────────────────────────────────────────────────────┤
-│ Computer Vision & AI  │ • Ultralytics YOLOv8-Pose (COCO 17-Keypoint Body)   │
+│ Multimodal AI Vision  │ • Google Gemini 2.0 Flash (google-genai SDK)        │
+│                       │ • Representative Keyframe Visual Extraction         │
+│                       │ • Multimodal Fusion of Frames + Biomechanical Metrics│
+│                       │ • Natural Language Risk Assessment & Recommendations│
+├───────────────────────┼─────────────────────────────────────────────────────┤
+│ Computer Vision & DL  │ • Ultralytics YOLOv8-Pose (COCO 17-Keypoint Body)   │
 │                       │ • Ultralytics YOLOv8 (Tool & Load Object Detection) │
 │                       │ • ByteTrack / BoT-SORT (Multi-Worker ID Tracking)   │
 │                       │ • Spatial-Temporal Tracklet Stitching (Hungarian)   │
@@ -51,7 +57,16 @@ AgriErgo combines modern deep learning computer vision with validated occupation
 
 ## 🌟 Key Features
 
-### 1. ⏱️ 1-Hour Activity Standardisation Engine
+### 1. 🧠 Multimodal AI Vision & Task Intelligence (Google Gemini 2.0)
+- **Video Keyframe Analysis**: Automatically extracts representative keyframes per worker (initial posture, peak bending moments, peak load events, transition phases).
+- **Multimodal Context Fusion**: Feeds sampled visual frames alongside precise biomechanical signals (trunk flexion, knee angle, shoulder elevation, RULA/REBA scores) into **Google Gemini 2.0 Flash**.
+- **AI Task Classification**: Accurately infers complex agricultural tasks (e.g. *Manual Rice Transplanting*, *Cotton Harvesting*, *Turmeric Rhizome Digging*, *Knapsack Pesticide Spraying*, *Manual Weeding*) with visual confidence scores.
+- **Contextual Scene & Crop Detection**: Identifies crop type (Paddy, Turmeric, Wheat, Vegetables), terrain condition (Wet Paddy Field, Dry Upland, Furrow Beds), and weather/working environment.
+- **Natural Language Ergonomic Risk Narratives**: Produces expert-level occupational hazard assessments detailing primary biomechanical vulnerabilities.
+- **Actionable AI Interventions**: Generates prioritized, worker-tailored ergonomic recommendations (e.g., handle extensions, stool support, rotational intervals).
+- **Graceful Fallback**: Automatically degrades to validated rule-based heuristics if API key is not configured or network is offline.
+
+### 2. ⏱️ 1-Hour Activity Standardisation Engine
 - Mathematically normalizes tracked durations and counts to a **standardized 1-hour (3600s) activity window**:
   $$\text{Scaling Factor } S = \frac{3600}{\text{Tracked Seconds}}$$
 - Provides standardized hourly metrics:
@@ -60,7 +75,7 @@ AgriErgo combines modern deep learning computer vision with validated occupation
   - Hourly Load Events & Field Trips
   - 1-Hour Standardized Work-to-Rest Ratio
 
-### 2. 📐 Geometric Posture & Action Classification
+### 3. 📐 Geometric Posture & Action Classification
 Accurately categorizes human biomechanical states into **7 primary agricultural actions** using calibrated joint angle rules:
 - **Standing**: Hip, knee, and ankle align near vertical ($\theta_{\text{knee}} \ge 160^\circ$, $\theta_{\text{hip}} \ge 150^\circ$).
 - **Sitting**: Bent hips & knees with low ankle elevation ($\theta_{\text{hip}} < 110^\circ$, $\theta_{\text{knee}} < 120^\circ$, pelvis lowered).
@@ -70,7 +85,7 @@ Accurately categorizes human biomechanical states into **7 primary agricultural 
 - **Load Carrying**: Spatio-temporal IoU intersection between worker bounding box and carried objects (crates, bags, backpacks).
 - **Work Bouts & Rest Periods**: Automatic segmentation of continuous active bouts vs. idle micro-recovery periods.
 
-### 3. 💪 Arm Postural Study (Upper Limb Hazard Analysis)
+### 4. 💪 Arm Postural Study (Upper Limb Hazard Analysis)
 - **Shoulder Elevation Angle**: Computes upper arm abduction/flexion angle relative to trunk midline.
 - **Elbow Flexion Angle**: Computes interior angle between upper arm and forearm.
 - **Hazard Exposure Metrics**:
@@ -79,7 +94,7 @@ Accurately categorizes human biomechanical states into **7 primary agricultural 
   - Classified Arm Postural Risk (`Low`, `Moderate`, `High`, `Very High`)
 - **HUD Skeleton Overlays**: Real-time color-coded angle overlays directly rendered onto processed video.
 
-### 4. 📊 Continuous Agricultural Drudgery Index (ADI)
+### 5. 📊 Continuous Agricultural Drudgery Index (ADI)
 Evaluates composite farm labor strain across **5 scientific pillars** (0–100 score & percentage):
 1. **Postural Strain ($W_1 = 30\%$)**: Weighted composite of severe trunk bending, squatting, and static standing.
 2. **Repetitive Movement Strain ($W_2 = 25\%$)**: Scaled from movement frequency ($0\text{--}90\text{ CPM}$).
@@ -87,17 +102,17 @@ Evaluates composite farm labor strain across **5 scientific pillars** (0–100 s
 4. **Load & Tool Burden ($W_4 = 15\%$)**: Load carrying frequency and equipment handling weight.
 5. **Arm & Shoulder Strain ($W_5 = 10\%$)**: Shoulder elevation duration above $45^\circ$ and $90^\circ$.
 
-### 5. 📑 Validated Ergonomic & Biomechanical Standards
+### 6. 📑 Validated Ergonomic & Biomechanical Standards
 - **REBA (Rapid Entire Body Assessment)**: 1–15 body postural score.
 - **RULA (Rapid Upper Limb Assessment)**: 1–7 upper limb posture score.
 - **Revised NIOSH Lifting Equation**: Calculates Recommended Weight Limit (RWL), Lifting Index (LI), and **L5/S1 Lumbar Disc Compression Force ($N$)**.
 - **ISO 11226 Standard**: Evaluates static posture shift exposure limits against ergonomic threshold violations.
 
-### 6. 👥 Robust Multi-Worker Tracking & Tracklet Stitching
+### 7. 👥 Robust Multi-Worker Tracking & Tracklet Stitching
 - Employs **ByteTrack** and **BoT-SORT** for spatial-temporal multi-person tracking.
 - **Tracklet Stitcher**: Automatically stitches fragmented IDs caused by occlusions, field crops, or workers exiting and re-entering the camera frame using Hungarian bipartite graph matching.
 
-### 7. 🎬 Fault-Tolerant High-Resolution Video Decoder
+### 8. 🎬 Fault-Tolerant High-Resolution Video Decoder
 - Robust sequential stream grab sampling (`cap.grab()`) prevents HEVC (H.265), MPEG-TS, and 4K bitstream seek corruption (`PPS/POC errors`).
 - Adaptive frame subsampling maintains real-time throughput on long agricultural field recordings.
 
@@ -139,6 +154,9 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
+
+# (Optional) Set Google Gemini API Key for AI Analysis
+export GEMINI_API_KEY="your-gemini-api-key"   # On Windows: set GEMINI_API_KEY="your-gemini-api-key"
 ```
 
 ### 3. Launch Interactive Streamlit Dashboard
@@ -148,7 +166,8 @@ streamlit run dashboard/app.py
 Open **[http://localhost:8501](http://localhost:8501)** in your browser:
 1. Upload a field video (`.mp4`, `.mov`, `.avi`, `.mkv`).
 2. Select processing mode (**Lightning Fast**, **Balanced Fast**, or **High Precision Research**).
-3. View real-time KPIs, 1-hour standardized matrices, arm postural risk gauges, 5-pillar ADI radar charts, and download publication-ready PDF reports.
+3. Toggle **Enable AI Analysis** and provide your Gemini API key (or set it via `GEMINI_API_KEY` env var).
+4. View real-time KPIs, AI task narratives, 1-hour standardized matrices, arm postural risk gauges, 5-pillar ADI radar charts, and download publication-ready PDF reports with AI insights.
 
 ### 4. Launch FastAPI REST Backend
 ```bash
@@ -197,8 +216,25 @@ python -m pytest tests/ -v
    │    ├── ErgonomicScorer (REBA Score + ISO 11226 Shift Exposure Check)      │
    │    ├── RULAScorer (Rapid Upper Limb Assessment Score & Action Levels)     │
    │    ├── NIOSHCalculator (RWL, Lifting Index, L5/S1 Spinal Compression)     │
-   │    ├── ParameterAggregator (11-Parameter Unified Worker Data Model)       │
-   │    └── PDFGenerator & ReportGenerator (JSON, CSV, & PDF Report Export)    │
+   │    └── ParameterAggregator (11-Parameter Unified Worker Data Model)       │
+   └─────────────────────────────────────┬─────────────────────────────────────┘
+                                         │
+                                         ▼
+   ┌───────────────────────────────────────────────────────────────────────────┐
+   │ 3.5 MULTIMODAL AI AGENT LAYER (Google Gemini 2.0 Flash)                   │
+   │    ├── KeyframeBuffer (Representative Task, Peak-Bending & Load Frames)   │
+   │    ├── MultimodalPrompt (Fusion of Video Frames + Biomechanical Metrics)  │
+   │    ├── AITaskClassifier (Contextual Visual Activity & Crop Recognition)   │
+   │    ├── ErgonomicNarrativeEngine (Expert Natural Language Risk Assessment) │
+   │    └── ActionableRecommendationGenerator (Worker-Tailored Interventions)  │
+   └─────────────────────────────────────┬─────────────────────────────────────┘
+                                         │
+                                         ▼
+   ┌───────────────────────────────────────────────────────────────────────────┐
+   │ 4. PRESENTATION & EXPORT LAYER                                            │
+   │    ├── Streamlit Dashboard (Real-Time KPIs, AI Callouts & Radar Charts)   │
+   │    ├── PDFGenerator (Publication-Ready PDF Reports with AI Insights)      │
+   │    └── ReportGenerator (Structured JSON & CSV Export for Downstream ML)   │
    └───────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -209,6 +245,9 @@ python -m pytest tests/ -v
 ```
 AgriErgo/
 ├── agriergo/
+│   ├── ai/
+│   │   ├── __init__.py              # AgriErgo AI Package Exports
+│   │   └── gemini_analyzer.py       # Google Gemini Multimodal Vision Analyzer
 │   ├── analytics/
 │   │   ├── drudgery_index.py        # 5-Pillar Agricultural Drudgery Index
 │   │   ├── niosh_calculator.py      # NIOSH RWL & L5/S1 Compression Force

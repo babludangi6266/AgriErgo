@@ -149,6 +149,19 @@ class WorkerReport:
     iso_11226_message: Optional[str] = None
     shift_5min_posture_windows: List[Dict[str, Any]] = field(default_factory=list)
 
+    # AI / Gemini Multimodal Analysis
+    ai_task_classification: Optional[str] = None
+    ai_task_confidence: Optional[float] = None
+    ai_crop_detected: Optional[str] = None
+    ai_terrain_type: Optional[str] = None
+    ai_risk_narrative: Optional[str] = None
+    ai_recommendations: List[str] = field(default_factory=list)
+    ai_tools_identified: List[str] = field(default_factory=list)
+    ai_severity_rating: Optional[str] = None
+    ai_working_conditions: Optional[str] = None
+    ai_model_used: Optional[str] = None
+    ai_analysis_success: bool = False
+
 
 class ParameterAggregator:
     """

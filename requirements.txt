@@ -25,3 +25,7 @@ pytest>=7.4.0
 
 # Utilities
 tqdm>=4.66.0
+
+# AI / Multimodal Vision
+google-genai>=1.0.0
+Pillow>=10.0.0

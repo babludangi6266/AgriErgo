@@ -210,6 +210,47 @@ class PDFReportGenerator:
                 ('PADDING', (0, 0), (-1, -1), 4),
             ]))
             elements.append(ang_table)
+            elements.append(Spacer(1, 10))
+
+            # AI Ergonomic Insights Section (if available)
+            if getattr(wr, 'ai_analysis_success', False):
+                elements.append(Paragraph(f"Worker #{wr.worker_id} AI Ergonomic Insights (Gemini)", bold_body))
+
+                ai_rows = [
+                    [Paragraph("<b>AI Field</b>", bold_body), Paragraph("<b>AI Assessment</b>", bold_body)],
+                    [Paragraph("AI Task Classification", body_style),
+                     Paragraph(f"<b>{wr.ai_task_classification or 'N/A'}</b> (Confidence: {round((wr.ai_task_confidence or 0) * 100)}%)", bold_body)],
+                    [Paragraph("Crop / Terrain", body_style),
+                     Paragraph(f"{wr.ai_crop_detected or 'N/A'} | {wr.ai_terrain_type or 'N/A'}", body_style)],
+                    [Paragraph("Severity Rating", body_style),
+                     Paragraph(f"<b>{wr.ai_severity_rating or 'N/A'}</b>", bold_body)],
+                    [Paragraph("Working Conditions", body_style),
+                     Paragraph(f"{wr.ai_working_conditions or 'N/A'}", body_style)],
+                    [Paragraph("AI Tools Identified", body_style),
+                     Paragraph(f"{', '.join(wr.ai_tools_identified) if wr.ai_tools_identified else 'None detected'}", body_style)],
+                ]
+                ai_table = Table(ai_rows, colWidths=[180, 340])
+                ai_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#EDE9FE")),
+                    ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor("#A78BFA")),
+                    ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#DDD6FE")),
+                    ('PADDING', (0, 0), (-1, -1), 5),
+                ]))
+                elements.append(ai_table)
+                elements.append(Spacer(1, 8))
+
+                # AI Risk Narrative
+                if wr.ai_risk_narrative:
+                    elements.append(Paragraph(f"<b>AI Risk Assessment:</b> {wr.ai_risk_narrative}", body_style))
+                    elements.append(Spacer(1, 6))
+
+                # AI Recommendations
+                if wr.ai_recommendations:
+                    elements.append(Paragraph("<b>AI Recommendations:</b>", bold_body))
+                    for i, rec in enumerate(wr.ai_recommendations, 1):
+                        elements.append(Paragraph(f"   {i}. {rec}", body_style))
+                    elements.append(Spacer(1, 8))
+
             elements.append(Spacer(1, 15))
 
         doc.build(elements)

@@ -14,7 +14,7 @@ from collections import defaultdict
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from config.settings import FRAME_SAMPLE_FPS, RESULTS_DIR, OBJECT_DETECTION_STRIDE
+from config.settings import FRAME_SAMPLE_FPS, RESULTS_DIR, OBJECT_DETECTION_STRIDE, GEMINI_MAX_FRAMES_PER_WORKER
 
 # Perception
 from agriergo.perception.video_processor import VideoProcessor, VideoMetadata
@@ -42,6 +42,9 @@ from agriergo.analytics.report_generator import ReportGenerator
 from agriergo.analytics.pdf_generator import PDFReportGenerator
 from agriergo.perception.annotator import VideoAnnotator
 from agriergo.perception.tracklet_stitcher import TrackletStitcher
+from agriergo.ai.gemini_analyzer import (
+    GeminiAnalyzer, AIAnalysisResult, select_representative_keyframes,
+)
 
 
 @dataclass
@@ -95,6 +98,8 @@ class AgriErgoPipeline:
         video_path: str,
         progress_callback: Optional[Callable[[float, str], None]] = None,
         speed_mode: str = "Balanced Fast",
+        enable_ai: bool = False,
+        gemini_api_key: Optional[str] = None,
         **kwargs,
     ) -> PipelineResult:
         """
@@ -146,6 +151,10 @@ class AgriErgoPipeline:
         worker_wrist_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
         worker_shoulder_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
         worker_reba_scores: Dict[int, List[REBAScore]] = defaultdict(list)
+
+        # AI keyframe buffer: store sampled frames per worker for Gemini analysis
+        worker_keyframes: Dict[int, List[Tuple[float, np.ndarray]]] = defaultdict(list)
+        ai_keyframe_stride = max(1, int(total_frames / (GEMINI_MAX_FRAMES_PER_WORKER * 3))) if total_frames > 0 else 5
 
         frames_processed = 0
 
@@ -234,6 +243,13 @@ class AgriErgoPipeline:
                                     "object_class": obj.class_name,
                                 })
 
+            # Capture keyframes for AI analysis (sparsely sampled)
+            if enable_ai and frames_processed % ai_keyframe_stride == 0:
+                for person in persons:
+                    wid = person.person_id
+                    if wid is not None:
+                        worker_keyframes[wid].append((timestamp, frame.copy()))
+
             frames_processed += 1
 
             if total_frames > 0 and frames_processed % 10 == 0:
@@ -266,6 +282,7 @@ class AgriErgoPipeline:
         unified_wrist_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
         unified_shoulder_angles: Dict[int, List[Optional[float]]] = defaultdict(list)
         unified_reba_scores: Dict[int, List[REBAScore]] = defaultdict(list)
+        unified_keyframes: Dict[int, List[Tuple[float, np.ndarray]]] = defaultdict(list)
 
         for raw_id in worker_frame_records.keys():
             unified_id = raw_to_unified.get(raw_id, raw_id)
@@ -282,6 +299,8 @@ class AgriErgoPipeline:
             unified_wrist_angles[unified_id].extend(worker_wrist_angles[raw_id])
             unified_shoulder_angles[unified_id].extend(worker_shoulder_angles[raw_id])
             unified_reba_scores[unified_id].extend(worker_reba_scores[raw_id])
+            if raw_id in worker_keyframes:
+                unified_keyframes[unified_id].extend(worker_keyframes[raw_id])
 
         # Sort merged records chronologically for each unified worker
         for uid in unified_frame_records:
@@ -419,6 +438,85 @@ class AgriErgoPipeline:
             report.iso_11226_message = iso_msg
 
             worker_reports.append(report)
+
+        # ════════════════════════════════════════
+        # PHASE 3.5: AI ANALYSIS (Gemini Multimodal)
+        # ════════════════════════════════════════
+        if enable_ai and gemini_api_key:
+            self._report_progress(progress_callback, 0.85, "🧠 Running AI analysis...")
+            try:
+                from config.settings import GEMINI_MAX_FRAMES_PER_WORKER as MAX_KF
+                ai_analyzer = GeminiAnalyzer(api_key=gemini_api_key)
+
+                if ai_analyzer.is_available:
+                    for idx, report in enumerate(worker_reports):
+                        self._report_progress(
+                            progress_callback,
+                            0.85 + (idx / max(1, len(worker_reports))) * 0.05,
+                            f"🧠 AI analyzing Worker {report.worker_id} ({idx+1}/{len(worker_reports)})..."
+                        )
+
+                        # Get keyframes for this worker
+                        wid = report.worker_id
+                        kf_list = unified_keyframes.get(wid, [])
+
+                        # Select representative keyframes
+                        trunk_for_kf = unified_trunk_flexions.get(wid, [])
+                        selected_kf = select_representative_keyframes(
+                            kf_list, trunk_for_kf, max_frames=MAX_KF
+                        )
+
+                        # Build biomechanical context dict for the prompt
+                        dist = report.posture_summary.posture_distribution if report.posture_summary else {}
+                        bio_ctx = {
+                            "tracked_time_formatted": f"{int(report.total_tracked_time // 60)}m {int(report.total_tracked_time % 60)}s",
+                            "dominant_posture": report.posture_summary.dominant_posture.value if report.posture_summary else "unknown",
+                            "posture_distribution": dist,
+                            "avg_trunk_flexion": round(report.posture_summary.avg_trunk_flexion or 0, 1) if report.posture_summary else 0,
+                            "max_trunk_flexion": round(report.posture_summary.max_trunk_flexion or 0, 1) if report.posture_summary else 0,
+                            "avg_knee_angle": round(report.posture_summary.avg_knee_angle or 0, 1) if report.posture_summary else 0,
+                            "reba_score": report.reba_score,
+                            "reba_risk": report.reba_risk_level,
+                            "rula_score": report.rula_score,
+                            "rula_action": report.rula_action_level,
+                            "drudgery_index": report.drudgery_index,
+                            "drudgery_category": report.drudgery_category,
+                            "cycles_per_minute": report.repetitive_movement.cycles_per_minute if report.repetitive_movement else 0,
+                            "repetitive_joint": report.repetitive_movement.primary_joint if report.repetitive_movement else "none",
+                            "shoulder_above_45_pct": report.posture_summary.shoulder_above_45_pct if report.posture_summary else 0,
+                            "shoulder_above_90_pct": report.posture_summary.shoulder_above_90_pct if report.posture_summary else 0,
+                            "severe_bending_seconds": round(report.severe_bending_duration, 1),
+                            "load_events": report.total_load_events,
+                            "tools_detected": ", ".join(t.tool_name for t in report.tools_used) or "None",
+                            "rule_task": report.classified_task or "Unknown",
+                        }
+
+                        # Run AI analysis
+                        ai_result = ai_analyzer.analyze_worker(
+                            keyframes=selected_kf,
+                            biomechanical_context=bio_ctx,
+                        )
+
+                        # Merge AI results into worker report
+                        report.ai_task_classification = ai_result.ai_task_classification
+                        report.ai_task_confidence = ai_result.ai_task_confidence
+                        report.ai_crop_detected = ai_result.ai_crop_detected
+                        report.ai_terrain_type = ai_result.ai_terrain_type
+                        report.ai_risk_narrative = ai_result.ai_risk_narrative
+                        report.ai_recommendations = ai_result.ai_recommendations
+                        report.ai_tools_identified = ai_result.ai_tools_identified
+                        report.ai_severity_rating = ai_result.ai_severity_rating
+                        report.ai_working_conditions = ai_result.ai_working_conditions
+                        report.ai_model_used = ai_result.ai_model_used
+                        report.ai_analysis_success = ai_result.ai_analysis_success
+
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"AI analysis phase failed: {e}", exc_info=True)
+
+        # Free keyframe memory
+        worker_keyframes.clear()
+        unified_keyframes.clear()
 
         self._report_progress(progress_callback, 0.90, "Generating reports...")
 
