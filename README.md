@@ -66,7 +66,21 @@ AgriErgo combines state-of-the-art multimodal generative AI, deep learning compu
 - **Actionable AI Interventions**: Generates prioritized, worker-tailored ergonomic recommendations (e.g., handle extensions, stool support, rotational intervals).
 - **Graceful Fallback**: Automatically degrades to validated rule-based heuristics if API key is not configured or network is offline.
 
-### 2. ⏱️ 1-Hour Activity Standardisation Engine
+### 2. 📹 Real-Time Live Body Angle & Posture Tracking
+- **Live Biomechanical Kinematics**: Tracks live angular changes in real time across 6 anatomical joint axes:
+  - **Trunk Flexion Angle**: Forward bending/stooping from vertical ($0^\circ-180^\circ$).
+  - **Neck Flexion Angle**: Cervical spinal tilt from vertical ($0^\circ-180^\circ$).
+  - **Shoulder Elevation Angle**: Upper arm abduction/flexion ($<20^\circ$ safe, $>45^\circ$ elevated, $>90^\circ$ overhead hazard).
+  - **Elbow Flexion Angle**: Interior angle between upper arm and forearm ($0^\circ-180^\circ$).
+  - **Hip Angle**: Flexion between torso and thigh ($<110^\circ$ sitting/stooping).
+  - **Knee Angle**: Knee joint flexion ($>160^\circ$ standing, $<90^\circ$ deep squatting).
+- **Glassmorphic Biomechanical HUD Overlay**: Renders real-time telemetry card directly onto the live video feed displaying instantaneous angles, current posture, instant REBA score, live FPS, and active ergonomic hazard alerts.
+- **Temporal Angle Smoothing (EMA)**: Exponential moving average filter ($\alpha = 0.65$) removes keypoint jitter and flicker on live camera streams.
+- **Real-Time Rolling Strip Chart**: Live interactive Plotly graph streaming the last 40 frames of joint angles with color-coded safety threshold lines ($20^\circ$ neutral, $45^\circ$ strain, $60^\circ$ severe stoop, $90^\circ$ overhead).
+- **Multi-Source Ingestion**: Supports built-in webcams, USB industrial cameras, RTSP/IP network streams, or looping field videos for real-time simulation.
+- **Standalone CLI & Web UI**: Run natively via `python run_realtime.py --camera 0` (30+ FPS) or through the interactive Streamlit dashboard.
+
+### 3. ⏱️ 1-Hour Activity Standardisation Engine
 - Mathematically normalizes tracked durations and counts to a **standardized 1-hour (3600s) activity window**:
   $$\text{Scaling Factor } S = \frac{3600}{\text{Tracked Seconds}}$$
 - Provides standardized hourly metrics:
