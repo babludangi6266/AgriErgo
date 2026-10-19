@@ -18,6 +18,7 @@ from typing import Dict, List, Optional, Tuple, Any
 
 import cv2
 import numpy as np
+import pandas as pd
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -25,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from config.settings import (
     POSE_MODEL,
     TRACKER_CONFIG,
+    RESULTS_DIR,
     REALTIME_IMGSZ,
     REALTIME_CONFIDENCE,
     REALTIME_SMOOTHING_ALPHA,
@@ -40,6 +42,7 @@ from agriergo.perception.annotator import VideoAnnotator
 from agriergo.interpretation.joint_angles import compute_joint_angles, JointAngles
 from agriergo.interpretation.posture_classifier import PostureClassifier, PostureLabel
 from agriergo.analytics.ergonomic_scorer import ErgonomicScorer, REBAScore
+from agriergo.analytics.pdf_generator import PDFReportGenerator
 
 
 @dataclass
@@ -85,6 +88,8 @@ class RealTimeFrameResult:
     workers: List[WorkerLiveTelemetry]
     primary_telemetry: Optional[WorkerLiveTelemetry]
     alerts: List[str]
+    audio_alert_triggered: bool = False
+    audio_alert_message: Optional[str] = None
 
 
 class RealTimePostureTracker:
