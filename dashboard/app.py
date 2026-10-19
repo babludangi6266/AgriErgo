@@ -91,127 +91,338 @@ st.markdown("---")
 # ──────────────────────────────────────────────
 # Sidebar - Configuration
 # ──────────────────────────────────────────────
-with st.sidebar:
-    st.header("⚙️ Configuration")
-    sample_fps = st.slider(
-        "Sampling FPS",
-        min_value=1,
-        max_value=15,
-        value=5,
-        help="Higher FPS improves precision but increases processing time."
-    )
-    
-    st.markdown("---")
-    st.markdown("### About Parameters")
-    st.markdown("""
-    Extracts 11 key ergonomic parameters:
-    1. **Sitting duration**
-    2. **Standing duration**
-    3. **Bending duration**
-    4. **Walking duration**
-    5. **Load carried**
-    6. **Repetitive motion frequency**
-    7. **Trip count**
-    8. **Tools/equipment used**
-    9. **Posture & Joint angles**
-    10. **Continuous work duration**
-    11. **Rest duration & count**
-    """)
-
-
 # ──────────────────────────────────────────────
-# Step 1: Upload Video
+# Sidebar - Navigation & Workflow Selector
 # ──────────────────────────────────────────────
+st.sidebar.title("🎯 Workflow Mode")
+app_mode = st.sidebar.radio(
+    "Choose Assessment Mode:",
+    [
+        "📹 Real-Time Live Tracking (Camera / Stream)",
+        "📁 Video File Batch Analysis (Full Pipeline)",
+    ],
+    index=0,
+    help="Switch between live body angle tracking and full video file processing."
+)
+st.sidebar.markdown("---")
+
 @st.cache_resource
 def get_pipeline():
     """Cache AgriErgoPipeline model instances in RAM for 0s instant startup."""
     return AgriErgoPipeline()
 
-# Sidebar Configuration
-st.sidebar.title("⚙️ Pipeline Configuration")
-speed_mode = st.sidebar.radio(
-    "⚡ Processing Speed Mode",
-    ["⚡ Lightning Fast (<5s)", "⚖️ Balanced Fast (Default)", "🔬 High Precision Research"],
-    index=1,
-    help="Lightning Fast processes 10-30 min videos in 3-5s. Balanced Fast processes in 8-12s."
-)
 
-sample_fps = 5.0
-
-# ── AI / Gemini Configuration ──
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 🧠 AI Analysis (Gemini)")
-enable_ai = st.sidebar.toggle(
-    "🤖 Enable AI Analysis",
-    value=False,
-    help="Use Google Gemini AI to analyze video frames for intelligent task classification, risk narratives, and recommendations."
-)
-gemini_api_key = ""
-if enable_ai:
-    gemini_api_key = st.sidebar.text_input(
-        "🔑 Gemini API Key",
-        type="password",
-        placeholder="Enter your Google Gemini API key",
-        help="Get your free API key from https://aistudio.google.com/apikey"
+# ==============================================================================
+# WORKFLOW 1: REAL-TIME LIVE POSTURE & BODY ANGLE TRACKING
+# ==============================================================================
+if app_mode == "📹 Real-Time Live Tracking (Camera / Stream)":
+    st.subheader("📹 Real-Time Body Angle & Posture Tracking")
+    st.caption(
+        "Live high-framerate stream tracking of Trunk Flexion, Neck Angle, Shoulder Elevation, "
+        "Elbow & Knee Kinematics with real-time HUD and ISO 11226 hazard detection."
     )
-    if not gemini_api_key:
-        st.sidebar.warning("⚠️ Enter your Gemini API key to enable AI analysis.")
-    else:
-        st.sidebar.success("✅ API key configured")
 
-uploaded_file = st.file_uploader(
-    "Upload Field-Work Video",
-    type=[fmt.replace('.', '') for fmt in SUPPORTED_FORMATS],
-    help="Upload an MP4, AVI, or MOV video clip of agricultural field work."
-)
+    with st.sidebar:
+        st.header("⚙️ Stream Configuration")
+        stream_type = st.radio(
+            "Input Source",
+            ["🎥 Webcam / USB Camera", "🎞️ Stream Field Video (Simulated Live)", "🌐 RTSP / Network Stream"],
+            index=0,
+        )
 
-if uploaded_file is not None:
-    # Read bytes and save to temp file for OpenCV processing
-    file_bytes = uploaded_file.getvalue()
-    tfile = tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploaded_file.name).suffix)
-    tfile.write(file_bytes)
-    tfile.close()
-    video_path = tfile.name
+        stream_src = 0
+        if stream_type == "🎥 Webcam / USB Camera":
+            cam_index = st.number_input(
+                "Camera Device Index",
+                min_value=0,
+                max_value=5,
+                value=0,
+                help="0 is usually built-in webcam. 1, 2 for external USB cameras."
+            )
+            stream_src = int(cam_index)
+        elif stream_type == "🎞️ Stream Field Video (Simulated Live)":
+            existing_videos = list(Path("data/uploads").glob("*.mp4"))
+            if existing_videos:
+                chosen = st.selectbox("Select Existing Field Video", [str(v) for v in existing_videos])
+                stream_src = chosen
+            else:
+                up_demo = st.file_uploader("Upload video to stream", type=["mp4", "avi", "mov"])
+                if up_demo:
+                    tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+                    tfile.write(up_demo.getvalue())
+                    tfile.close()
+                    stream_src = tfile.name
+                else:
+                    stream_src = None
+        else:
+            stream_src = st.text_input("RTSP Stream URL", placeholder="rtsp://192.168.1.50:554/live")
 
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        try:
-            st.video(file_bytes)
-        except Exception as e:
-            st.info("📹 Video file loaded for pipeline processing (browser preview unavailable for this codec format).")
-    with col2:
-        st.success(f"**File uploaded:** {uploaded_file.name}")
-        st.info(f"**Size:** {round(len(file_bytes) / (1024*1024), 2)} MB")
-        
-        process_btn = st.button("🚀 Analyze Video", type="primary", use_container_width=True)
+        rt_conf = st.slider("Keypoint Confidence", min_value=0.20, max_value=0.70, value=float(REALTIME_CONFIDENCE), step=0.05)
+        rt_imgsz = st.selectbox("Inference Resolution", [256, 320, 416], index=1, help="Lower resolution runs at higher FPS")
+        show_hud = st.checkbox("Show Glassmorphic HUD Overlay", value=True)
+        show_chart = st.checkbox("Show Real-Time Angle Strip Chart", value=True)
 
-    if process_btn:
-        progress_bar = st.progress(0.0)
-        status_text = st.empty()
+    # Control Action Buttons
+    ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2.5, 1, 1])
+    with ctrl_col1:
+        st.info("💡 **Ergonomic Standards**: Severe Stoop (>60° trunk flexion), Awkward Arm (>45° shoulder), Overhead Strain (>90°), Squat Stress (<90° knee).")
+    with ctrl_col2:
+        start_btn = st.button("▶️ Start Live Tracking", type="primary", use_container_width=True)
+    with ctrl_col3:
+        stop_btn = st.button("⏹️ Stop Tracking", use_container_width=True)
 
-        def update_progress(pct: float, msg: str):
-            progress_bar.progress(pct)
-            status_text.text(msg)
+    if start_btn:
+        st.session_state["live_tracking_active"] = True
+    if stop_btn:
+        st.session_state["live_tracking_active"] = False
 
-        pipeline = get_pipeline()
-        
-        with st.spinner(f"Processing video ({speed_mode})..."):
+    if st.session_state.get("live_tracking_active", False):
+        if stream_src is None:
+            st.error("Please select or upload a valid video stream source.")
+        else:
+            tracker = RealTimePostureTracker(
+                confidence=rt_conf,
+                imgsz=rt_imgsz,
+                enable_tracking=True,
+            )
+
+            # Open video capture stream
+            if isinstance(stream_src, int):
+                cap = cv2.VideoCapture(stream_src, cv2.CAP_DSHOW)
+                if not cap.isOpened():
+                    cap = cv2.VideoCapture(stream_src)
+            else:
+                cap = cv2.VideoCapture(str(stream_src))
+
+            if not cap.isOpened():
+                st.error(f"❌ Failed to open video source: `{stream_src}`. Please verify camera connection or permissions.")
+                st.session_state["live_tracking_active"] = False
+            else:
+                kpi_placeholder = st.empty()
+                left_col, right_col = st.columns([1.6, 1.0])
+                with left_col:
+                    video_placeholder = st.empty()
+                    alert_placeholder = st.empty()
+                with right_col:
+                    chart_placeholder = st.empty()
+                    posture_breakdown_placeholder = st.empty()
+
+                hist_frames = deque(maxlen=40)
+                hist_trunk = deque(maxlen=40)
+                hist_shoulder = deque(maxlen=40)
+                hist_knee = deque(maxlen=40)
+                hist_neck = deque(maxlen=40)
+
+                frame_idx = 0
+                is_file = not isinstance(stream_src, int) and not str(stream_src).startswith("rtsp")
+
+                while cap.isOpened() and st.session_state.get("live_tracking_active", False):
+                    ret, frame = cap.read()
+                    if not ret:
+                        if is_file:
+                            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                            continue
+                        else:
+                            st.warning("⚠️ Live stream ended or disconnected.")
+                            break
+
+                    frame_idx += 1
+                    result = tracker.process_frame(frame, draw_overlay=True, draw_hud=show_hud)
+                    annotated_rgb = cv2.cvtColor(result.annotated_frame, cv2.COLOR_BGR2RGB)
+                    video_placeholder.image(annotated_rgb, channels="RGB", use_container_width=True)
+
+                    primary = result.primary_telemetry
+                    if primary is not None:
+                        # 1. Update Real-Time Metric Cards
+                        with kpi_placeholder.container():
+                            k1, k2, k3, k4, k5, k6 = st.columns(6)
+
+                            p_name = primary.posture.value.title()
+                            if primary.is_severe_stoop:
+                                p_badge = f"🔴 {p_name}"
+                            elif primary.posture.value == "squatting":
+                                p_badge = f"🟡 {p_name}"
+                            else:
+                                p_badge = f"🟢 {p_name}"
+                            k1.metric("Live Posture", p_badge)
+
+                            t_deg = round(primary.trunk_angle, 1)
+                            t_delta = "Severe Stoop!" if primary.is_severe_stoop else ("Bending" if t_deg > 30 else "Upright")
+                            k2.metric("Trunk Flexion", f"{t_deg}°", delta=t_delta, delta_color="inverse" if primary.is_severe_stoop else "normal")
+
+                            sh_deg = round(primary.shoulder_angle, 1) if primary.shoulder_angle is not None else 0.0
+                            sh_delta = "Overhead Hazard" if primary.is_arm_overhead else ("Elevated" if primary.is_arm_elevated else "Normal")
+                            k3.metric("Shoulder Angle", f"{sh_deg}°", delta=sh_delta, delta_color="inverse" if primary.is_arm_overhead else "normal")
+
+                            kn_deg = round(primary.knee_angle, 1) if primary.knee_angle is not None else 180.0
+                            kn_delta = "Squatting" if kn_deg < 100 else "Standing"
+                            k4.metric("Knee Angle", f"{kn_deg}°", delta=kn_delta)
+
+                            nk_deg = round(primary.neck_angle, 1) if primary.neck_angle is not None else 0.0
+                            k5.metric("Neck Flexion", f"{nk_deg}°")
+
+                            k6.metric("Instant REBA", f"Score {primary.reba_score}", delta=primary.reba_risk_level, delta_color="inverse" if primary.reba_score > 7 else "normal")
+
+                        # 2. Update Active Alerts
+                        if primary.alerts:
+                            with alert_placeholder.container():
+                                for alt in primary.alerts[:2]:
+                                    st.error(f"⚠️ **ERGONOMIC HAZARD DETECTED**: {alt}")
+                        else:
+                            alert_placeholder.empty()
+
+                        # 3. Update Rolling Strip Chart
+                        if show_chart:
+                            hist_frames.append(frame_idx)
+                            hist_trunk.append(primary.trunk_angle)
+                            hist_shoulder.append(primary.shoulder_angle or 0.0)
+                            hist_knee.append(primary.knee_angle or 180.0)
+                            hist_neck.append(primary.neck_angle or 0.0)
+
+                            if len(hist_frames) > 2:
+                                fig = go.Figure()
+                                fig.add_trace(go.Scatter(x=list(hist_frames), y=list(hist_trunk), mode='lines', name='Trunk Flexion', line=dict(color='#EF4444', width=2.5)))
+                                fig.add_trace(go.Scatter(x=list(hist_frames), y=list(hist_shoulder), mode='lines', name='Shoulder Elev.', line=dict(color='#F59E0B', width=2)))
+                                fig.add_trace(go.Scatter(x=list(hist_frames), y=list(hist_knee), mode='lines', name='Knee Angle', line=dict(color='#10B981', width=1.5)))
+
+                                # Hazard threshold reference lines
+                                fig.add_hline(y=60, line_dash="dash", line_color="#EF4444", annotation_text="Severe Stoop (60°)")
+                                fig.add_hline(y=45, line_dash="dot", line_color="#F59E0B", annotation_text="Arm Strain (45°)")
+                                fig.add_hline(y=20, line_dash="dot", line_color="#10B981", annotation_text="Upright (20°)")
+
+                                fig.update_layout(
+                                    title="Live Biomechanical Angle Stream (°)",
+                                    height=250,
+                                    margin=dict(l=20, r=20, t=35, b=20),
+                                    legend=dict(orientation="h", y=1.15),
+                                    yaxis=dict(range=[0, 190]),
+                                )
+                                chart_placeholder.plotly_chart(fig, use_container_width=True)
+
+                        # 4. Posture Time Breakdown
+                        with posture_breakdown_placeholder.container():
+                            st.markdown("##### ⏱️ Cumulative Posture Time")
+                            durs = primary.posture_durations
+                            p_df = pd.DataFrame([
+                                {"Posture": k.title(), "Seconds": round(v, 1)}
+                                for k, v in durs.items() if v > 0.5
+                            ])
+                            if not p_df.empty:
+                                fig_bar = px.bar(p_df, x="Seconds", y="Posture", orientation='h', color="Posture", height=160)
+                                fig_bar.update_layout(margin=dict(l=10, r=10, t=10, b=10), showlegend=False)
+                                st.plotly_chart(fig_bar, use_container_width=True)
+
+                    time.sleep(0.015)
+
+                cap.release()
+
+
+# ==============================================================================
+# WORKFLOW 2: BATCH VIDEO FILE ANALYSIS (FULL PIPELINE)
+# ==============================================================================
+else:
+    # Sidebar Configuration for Batch Video Mode
+    with st.sidebar:
+        st.header("⚙️ Batch Pipeline Settings")
+        speed_mode = st.radio(
+            "⚡ Processing Speed Mode",
+            ["⚡ Lightning Fast (<5s)", "⚖️ Balanced Fast (Default)", "🔬 High Precision Research"],
+            index=1,
+            help="Lightning Fast processes 10-30 min videos in 3-5s. Balanced Fast processes in 8-12s."
+        )
+
+        sample_fps = 5.0
+
+        # AI / Gemini Configuration
+        st.markdown("---")
+        st.markdown("### 🧠 AI Analysis (Gemini)")
+        enable_ai = st.toggle(
+            "🤖 Enable AI Analysis",
+            value=False,
+            help="Use Google Gemini AI to analyze video frames for intelligent task classification, risk narratives, and recommendations."
+        )
+        gemini_api_key = ""
+        if enable_ai:
+            gemini_api_key = st.text_input(
+                "🔑 Gemini API Key",
+                type="password",
+                placeholder="Enter your Google Gemini API key",
+                help="Get your free API key from https://aistudio.google.com/apikey"
+            )
+            if not gemini_api_key:
+                st.warning("⚠️ Enter your Gemini API key to enable AI analysis.")
+            else:
+                st.success("✅ API key configured")
+
+        st.markdown("---")
+        st.markdown("### About Parameters")
+        st.markdown("""
+        Extracts 11 key ergonomic parameters:
+        1. **Sitting duration**
+        2. **Standing duration**
+        3. **Bending duration**
+        4. **Walking duration**
+        5. **Load carried**
+        6. **Repetitive motion frequency**
+        7. **Trip count**
+        8. **Tools/equipment used**
+        9. **Posture & Joint angles**
+        10. **Continuous work duration**
+        11. **Rest duration & count**
+        """)
+
+    uploaded_file = st.file_uploader(
+        "Upload Field-Work Video",
+        type=[fmt.replace('.', '') for fmt in SUPPORTED_FORMATS],
+        help="Upload an MP4, AVI, or MOV video clip of agricultural field work."
+    )
+
+    if uploaded_file is not None:
+        file_bytes = uploaded_file.getvalue()
+        tfile = tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploaded_file.name).suffix)
+        tfile.write(file_bytes)
+        tfile.close()
+        video_path = tfile.name
+
+        col1, col2 = st.columns([2, 1])
+        with col1:
             try:
-                result = pipeline.process(
-                    video_path,
-                    progress_callback=update_progress,
-                    speed_mode=speed_mode,
-                    enable_ai=enable_ai and bool(gemini_api_key),
-                    gemini_api_key=gemini_api_key if enable_ai else None,
-                )
-            except TypeError:
-                result = pipeline.process(
-                    video_path,
-                    progress_callback=update_progress,
-                )
+                st.video(file_bytes)
+            except Exception as e:
+                st.info("📹 Video file loaded for pipeline processing (browser preview unavailable for this codec format).")
+        with col2:
+            st.success(f"**File uploaded:** {uploaded_file.name}")
+            st.info(f"**Size:** {round(len(file_bytes) / (1024*1024), 2)} MB")
 
-        st.session_state["pipeline_result"] = result
-        st.success(f"⚡ Analysis complete in {result.processing_time_seconds}s!")
+            process_btn = st.button("🚀 Analyze Video", type="primary", use_container_width=True)
+
+        if process_btn:
+            progress_bar = st.progress(0.0)
+            status_text = st.empty()
+
+            def update_progress(pct: float, msg: str):
+                progress_bar.progress(pct)
+                status_text.text(msg)
+
+            pipeline = get_pipeline()
+
+            with st.spinner(f"Processing video ({speed_mode})..."):
+                try:
+                    result = pipeline.process(
+                        video_path,
+                        progress_callback=update_progress,
+                        speed_mode=speed_mode,
+                        enable_ai=enable_ai and bool(gemini_api_key),
+                        gemini_api_key=gemini_api_key if enable_ai else None,
+                    )
+                except TypeError:
+                    result = pipeline.process(
+                        video_path,
+                        progress_callback=update_progress,
+                    )
+
+            st.session_state["pipeline_result"] = result
+            st.success(f"⚡ Analysis complete in {result.processing_time_seconds}s!")
 
 
 # ──────────────────────────────────────────────
