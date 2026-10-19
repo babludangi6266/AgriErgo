@@ -17,6 +17,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import cv2
+from collections import deque
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -26,9 +28,12 @@ from config.settings import (
     STREAMLIT_PAGE_ICON,
     SUPPORTED_FORMATS,
     MAX_UPLOAD_SIZE_MB,
+    REALTIME_IMGSZ,
+    REALTIME_CONFIDENCE,
 )
 from agriergo.pipeline import AgriErgoPipeline
 from agriergo.analytics.parameter_aggregator import WorkerReport
+from agriergo.perception.realtime_tracker import RealTimePostureTracker
 
 
 # ──────────────────────────────────────────────
