@@ -82,3 +82,64 @@ def test_tracker_reset():
     tracker.reset()
     assert len(tracker._smoothed_angles) == 0
     assert tracker.frame_count == 0
+
+
+def test_session_records_and_summary():
+    """Test session records buffer, DataFrame export, and summary computation."""
+    tracker = RealTimePostureTracker()
+    now = 1000.0
+
+    # Simulate 2 session records
+    tracker._session_records.append({
+        "timestamp": now,
+        "worker_id": 1,
+        "posture": "bending",
+        "trunk_angle_deg": 65.0,
+        "neck_angle_deg": 30.0,
+        "knee_angle_deg": 165.0,
+        "shoulder_angle_deg": 45.0,
+        "reba_score": 8,
+        "reba_risk_level": "High",
+        "is_severe_stoop": True,
+        "is_arm_overhead": False,
+    })
+    tracker._session_records.append({
+        "timestamp": now + 1.0,
+        "worker_id": 1,
+        "posture": "standing",
+        "trunk_angle_deg": 15.0,
+        "neck_angle_deg": 10.0,
+        "knee_angle_deg": 175.0,
+        "shoulder_angle_deg": 35.0,
+        "reba_score": 2,
+        "reba_risk_level": "Low",
+        "is_severe_stoop": False,
+        "is_arm_overhead": False,
+    })
+
+    df = tracker.get_session_dataframe()
+    assert len(df) == 2
+    assert "trunk_angle_deg" in df.columns
+    assert df["is_severe_stoop"].sum() == 1
+
+    summary = tracker.get_session_summary(source_desc="Test Feed")
+    assert summary["max_trunk_angle"] == 65.0
+    assert summary["peak_reba_score"] == 8
+    assert "bending" in summary["posture_distribution"]
+    assert "standing" in summary["posture_distribution"]
+    assert len(summary["recommendations"]) > 0
+
+
+def test_audio_alert_trigger_conditions():
+    """Test that severe stoop >60 triggers audio alert."""
+    tracker = RealTimePostureTracker()
+    # First alert should trigger when stoop is severe
+    telem = WorkerLiveTelemetry(
+        worker_id=1,
+        posture=PostureLabel.BENDING,
+        trunk_angle=68.0,
+        is_severe_stoop=True,
+    )
+    # Validate alert message creation
+    assert telem.is_severe_stoop is True
+

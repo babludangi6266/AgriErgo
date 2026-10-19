@@ -178,11 +178,17 @@ export GEMINI_API_KEY="your-gemini-api-key"   # On Windows: set GEMINI_API_KEY="
 # Run real-time tracking on default webcam (Device 0)
 python run_realtime.py --camera 0
 
-# Run on external USB camera or RTSP stream
+# Run with audible hazard alerts (880Hz tone on severe stoop >60° or overhead arm >90°)
+python run_realtime.py --sound
+
+# Run with live MP4 session recording and auto-export to CSV & PDF on exit
+python run_realtime.py --sound --record --export-csv --export-pdf
+
+# Run on external USB camera
 python run_realtime.py --camera 1
 
-# Stream an existing field video in real time (simulated live camera)
-python run_realtime.py --video data/uploads/sample.mp4
+# Stream an existing field video in real time with audio alerts & PDF export
+python run_realtime.py --video data/uploads/sample.mp4 --sound --export-pdf
 ```
 
 ### 4. Launch Interactive Streamlit Dashboard (Live & Batch Assessment)
