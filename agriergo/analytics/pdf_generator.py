@@ -267,3 +267,225 @@ class PDFReportGenerator:
                 pass
 
         return pdf_bytes
+
+    def generate_live_session_pdf(
+        self,
+        session_summary: Dict[str, Any],
+        output_path: Optional[str] = None,
+    ) -> bytes:
+        """
+        Generate a publication-grade PDF report summarizing a real-time live assessment session.
+
+        Args:
+            session_summary: Dictionary containing session metrics and angular kinematics.
+            output_path: Optional file path to save PDF to disk.
+
+        Returns:
+            PDF file bytes.
+        """
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            rightMargin=36,
+            leftMargin=36,
+            topMargin=36,
+            bottomMargin=36,
+        )
+
+        styles = getSampleStyleSheet()
+
+        title_style = ParagraphStyle(
+            'LiveDocTitle',
+            parent=styles['Heading1'],
+            fontName='Helvetica-Bold',
+            fontSize=20,
+            leading=24,
+            textColor=colors.HexColor("#0F172A"),
+            spaceAfter=4,
+        )
+        subtitle_style = ParagraphStyle(
+            'LiveDocSubtitle',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=10,
+            textColor=colors.HexColor("#64748B"),
+            spaceAfter=12,
+        )
+        section_heading = ParagraphStyle(
+            'LiveSectionHeading',
+            parent=styles['Heading2'],
+            fontName='Helvetica-Bold',
+            fontSize=13,
+            leading=16,
+            textColor=colors.HexColor("#1E293B"),
+            spaceBefore=10,
+            spaceAfter=6,
+        )
+        body_style = ParagraphStyle(
+            'LiveBody',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=9,
+            leading=12,
+            textColor=colors.HexColor("#334155"),
+        )
+        bold_body = ParagraphStyle(
+            'LiveBoldBody',
+            parent=body_style,
+            fontName='Helvetica-Bold',
+        )
+
+        elements = []
+
+        # ── Header ──
+        elements.append(Paragraph("AgriErgo — Real-Time Live Assessment Report", title_style))
+        elements.append(Paragraph(
+            f"Live Biomechanical Kinematics &amp; Ergonomic Posture Evaluation | Session Date: {datetime.now().strftime('%B %d, %Y - %H:%M:%S')}",
+            subtitle_style
+        ))
+        elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#10B981"), spaceAfter=12))
+
+        # ── 1. Session Metadata ──
+        elements.append(Paragraph("1. Live Session Metadata", section_heading))
+        meta_rows = [
+            [
+                Paragraph("<b>Session Duration:</b>", body_style), Paragraph(str(session_summary.get('session_duration_formatted', '00:00:00')), body_style),
+                Paragraph("<b>Frames Analyzed:</b>", body_style), Paragraph(str(session_summary.get('total_frames', 0)), body_style),
+            ],
+            [
+                Paragraph("<b>Average FPS:</b>", body_style), Paragraph(f"{round(session_summary.get('avg_fps', 0.0), 1)} FPS", body_style),
+                Paragraph("<b>Video Source:</b>", body_style), Paragraph(str(session_summary.get('source_desc', 'Live Camera / Stream')), body_style),
+            ],
+            [
+                Paragraph("<b>Peak REBA Score:</b>", body_style), Paragraph(f"Score {session_summary.get('peak_reba_score', 1)} ({session_summary.get('dominant_risk_level', 'Low')})", body_style),
+                Paragraph("<b>ISO 11226 Status:</b>", body_style), Paragraph("VIOLATION (Severe Stoop)" if session_summary.get('iso_11226_violation', False) else "Compliant", body_style),
+            ],
+        ]
+        meta_table = Table(meta_rows, colWidths=[110, 150, 110, 150])
+        meta_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#F8FAFC")),
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+            ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+            ('PADDING', (0, 0), (-1, -1), 5),
+        ]))
+        elements.append(meta_table)
+        elements.append(Spacer(1, 10))
+
+        # ── 2. Joint Kinematics Summary Table ──
+        elements.append(Paragraph("2. Biomechanical Joint Kinematics Breakdown", section_heading))
+        ang_headers = [
+            Paragraph("<b>Joint Anatomical Axis</b>", bold_body),
+            Paragraph("<b>Mean Angle</b>", bold_body),
+            Paragraph("<b>Peak Angle</b>", bold_body),
+            Paragraph("<b>Ergonomic Safety Limit</b>", bold_body),
+            Paragraph("<b>Hazard Exposure</b>", bold_body),
+        ]
+        ang_data = [ang_headers]
+
+        # Trunk Flexion
+        t_avg = session_summary.get('avg_trunk_angle', 0.0)
+        t_max = session_summary.get('max_trunk_angle', 0.0)
+        t_stoop_s = session_summary.get('severe_stoop_seconds', 0.0)
+        t_stoop_pct = session_summary.get('severe_stoop_pct', 0.0)
+        ang_data.append([
+            Paragraph("Trunk Flexion (Stoop / Bending)", body_style),
+            Paragraph(f"{round(t_avg, 1)}°", body_style),
+            Paragraph(f"{round(t_max, 1)}°", body_style),
+            Paragraph("≤ 20° Upright (Max 60°)", body_style),
+            Paragraph(f"{round(t_stoop_s, 1)}s ({round(t_stoop_pct, 1)}%) &gt;60°", body_style),
+        ])
+
+        # Shoulder Elevation
+        sh_avg = session_summary.get('avg_shoulder_angle', 0.0)
+        sh_max = session_summary.get('max_shoulder_angle', 0.0)
+        sh_over_s = session_summary.get('overhead_arm_seconds', 0.0)
+        sh_over_pct = session_summary.get('overhead_arm_pct', 0.0)
+        ang_data.append([
+            Paragraph("Shoulder Elevation (Upper Arm)", body_style),
+            Paragraph(f"{round(sh_avg, 1)}°", body_style),
+            Paragraph(f"{round(sh_max, 1)}°", body_style),
+            Paragraph("≤ 20° Neutral (Max 45°)", body_style),
+            Paragraph(f"{round(sh_over_s, 1)}s ({round(sh_over_pct, 1)}%) &gt;90°", body_style),
+        ])
+
+        # Knee Flexion
+        kn_avg = session_summary.get('avg_knee_angle', 170.0)
+        kn_min = session_summary.get('min_knee_angle', 170.0)
+        ang_data.append([
+            Paragraph("Knee Flexion (Squatting Stress)", body_style),
+            Paragraph(f"{round(kn_avg, 1)}°", body_style),
+            Paragraph(f"{round(kn_min, 1)}° (Min)", body_style),
+            Paragraph("≥ 150° Standing (Max 90° Squat)", body_style),
+            Paragraph(f"{round(session_summary.get('squatting_seconds', 0.0), 1)}s Squatting", body_style),
+        ])
+
+        # Neck Flexion
+        nk_avg = session_summary.get('avg_neck_angle', 0.0)
+        nk_max = session_summary.get('max_neck_angle', 0.0)
+        ang_data.append([
+            Paragraph("Neck Flexion (Cervical Spine)", body_style),
+            Paragraph(f"{round(nk_avg, 1)}°", body_style),
+            Paragraph(f"{round(nk_max, 1)}°", body_style),
+            Paragraph("≤ 20° Upright", body_style),
+            Paragraph(f"{round(session_summary.get('neck_strain_seconds', 0.0), 1)}s &gt;25°", body_style),
+        ])
+
+        kin_table = Table(ang_data, colWidths=[150, 85, 85, 100, 100])
+        kin_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#F1F5F9")),
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+            ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+            ('PADDING', (0, 0), (-1, -1), 5),
+        ]))
+        elements.append(kin_table)
+        elements.append(Spacer(1, 10))
+
+        # ── 3. Posture Distribution Breakdown ──
+        elements.append(Paragraph("3. Real-Time Posture Time Distribution", section_heading))
+        posture_dist = session_summary.get('posture_distribution', {})
+        p_headers = [Paragraph("<b>Posture Action</b>", bold_body), Paragraph("<b>Tracked Time</b>", bold_body), Paragraph("<b>Percentage (%)</b>", bold_body)]
+        p_data = [p_headers]
+        for p_name, p_info in posture_dist.items():
+            dur_s = p_info.get('duration_seconds', 0.0)
+            pct = p_info.get('percentage', 0.0)
+            p_data.append([
+                Paragraph(p_name.replace('_', ' ').title(), body_style),
+                Paragraph(f"{round(dur_s, 1)}s", body_style),
+                Paragraph(f"{round(pct, 1)}%", body_style),
+            ])
+        p_table = Table(p_data, colWidths=[200, 160, 160])
+        p_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#F1F5F9")),
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+            ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+            ('PADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(p_table)
+        elements.append(Spacer(1, 10))
+
+        # ── 4. Ergonomic Hazard Recommendations ──
+        elements.append(Paragraph("4. Ergonomic Intervention Recommendations", section_heading))
+        recs = session_summary.get('recommendations', [
+            "Implement adjustable-height tools to reduce forward trunk stooping below 30°.",
+            "Incorporate 2-minute micro-recovery breaks every 20 minutes to relieve lumbar spinal compression.",
+            "Use rolling field stools or ergonomic knee pads during prolonged plantation or weeding activities.",
+            "Keep upper arms below 45° to eliminate shoulder rotator cuff fatigue during field tasks.",
+        ])
+        for idx, rec in enumerate(recs, 1):
+            elements.append(Paragraph(f"<b>{idx}.</b> {rec}", body_style))
+            elements.append(Spacer(1, 4))
+
+        doc.build(elements)
+
+        pdf_bytes = buffer.getvalue()
+        buffer.close()
+
+        if output_path:
+            try:
+                with open(output_path, 'wb') as f:
+                    f.write(pdf_bytes)
+            except Exception:
+                pass
+
+        return pdf_bytes
