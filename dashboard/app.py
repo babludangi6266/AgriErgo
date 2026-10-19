@@ -161,6 +161,8 @@ if app_mode == "📹 Real-Time Live Tracking (Camera / Stream)":
         rt_imgsz = st.selectbox("Inference Resolution", [256, 320, 416], index=1, help="Lower resolution runs at higher FPS")
         show_hud = st.checkbox("Show Glassmorphic HUD Overlay", value=True)
         show_chart = st.checkbox("Show Real-Time Angle Strip Chart", value=True)
+        enable_audio = st.checkbox("🔊 Enable Audible Hazard Alerts (Voice & Beep)", value=True, help="Plays audible warning tone & voice when severe stooping or overhead work is detected")
+        record_video = st.checkbox("🔴 Record Live Video Session to MP4", value=False, help="Saves live annotated feed as an MP4 video file")
 
     # Control Action Buttons
     ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2.5, 1, 1])
@@ -199,6 +201,7 @@ if app_mode == "📹 Real-Time Live Tracking (Camera / Stream)":
                 st.session_state["live_tracking_active"] = False
             else:
                 kpi_placeholder = st.empty()
+                audio_placeholder = st.empty()
                 left_col, right_col = st.columns([1.6, 1.0])
                 with left_col:
                     video_placeholder = st.empty()
@@ -215,6 +218,7 @@ if app_mode == "📹 Real-Time Live Tracking (Camera / Stream)":
 
                 frame_idx = 0
                 is_file = not isinstance(stream_src, int) and not str(stream_src).startswith("rtsp")
+                writer_started = False
 
                 while cap.isOpened() and st.session_state.get("live_tracking_active", False):
                     ret, frame = cap.read()
@@ -227,6 +231,13 @@ if app_mode == "📹 Real-Time Live Tracking (Camera / Stream)":
                             break
 
                     frame_idx += 1
+
+                    # Initialize video writer if recording requested
+                    if record_video and not writer_started:
+                        h_f, w_f = frame.shape[:2]
+                        tracker.start_video_recording(fps=20.0, frame_size=(w_f, h_f))
+                        writer_started = True
+
                     result = tracker.process_frame(frame, draw_overlay=True, draw_hud=show_hud)
                     annotated_rgb = cv2.cvtColor(result.annotated_frame, cv2.COLOR_BGR2RGB)
                     video_placeholder.image(annotated_rgb, channels="RGB", use_container_width=True)
@@ -263,13 +274,41 @@ if app_mode == "📹 Real-Time Live Tracking (Camera / Stream)":
 
                             k6.metric("Instant REBA", f"Score {primary.reba_score}", delta=primary.reba_risk_level, delta_color="inverse" if primary.reba_score > 7 else "normal")
 
-                        # 2. Update Active Alerts
+                        # 2. Update Active Alerts & Audible Warning
                         if primary.alerts:
                             with alert_placeholder.container():
                                 for alt in primary.alerts[:2]:
                                     st.error(f"⚠️ **ERGONOMIC HAZARD DETECTED**: {alt}")
                         else:
                             alert_placeholder.empty()
+
+                        # Trigger Audible Warning if hazard detected and enabled
+                        if result.audio_alert_triggered and enable_audio:
+                            audio_js = f"""
+                            <script>
+                            try {{
+                                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                                const osc = audioCtx.createOscillator();
+                                const gain = audioCtx.createGain();
+                                osc.type = "sawtooth";
+                                osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+                                gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+                                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+                                osc.connect(gain);
+                                gain.connect(audioCtx.destination);
+                                osc.start();
+                                osc.stop(audioCtx.currentTime + 0.35);
+
+                                if ('speechSynthesis' in window) {{
+                                    const msg = new SpeechSynthesisUtterance("{result.audio_alert_message or 'Warning: Ergonomic Hazard Detected'}");
+                                    msg.rate = 1.1;
+                                    window.speechSynthesis.speak(msg);
+                                }}
+                            }} catch(e) {{}}
+                            </script>
+                            """
+                            with audio_placeholder.container():
+                                st.components.v1.html(audio_js, height=0)
 
                         # 3. Update Rolling Strip Chart
                         if show_chart:
@@ -315,6 +354,73 @@ if app_mode == "📹 Real-Time Live Tracking (Camera / Stream)":
                     time.sleep(0.015)
 
                 cap.release()
+
+                # Save completed session data to session_state
+                rec_video_path = tracker.stop_video_recording() if record_video else None
+                summary_data = tracker.get_session_summary(source_desc=stream_type)
+                df_session = tracker.get_session_dataframe()
+                pdf_bytes = tracker.export_session_pdf(source_desc=stream_type)
+
+                st.session_state["completed_live_summary"] = summary_data
+                st.session_state["completed_live_df"] = df_session
+                st.session_state["completed_live_pdf"] = pdf_bytes
+                st.session_state["completed_live_video"] = rec_video_path
+
+    # Display Live Session Summary & Download Export Center
+    if "completed_live_summary" in st.session_state:
+        st.markdown("---")
+        st.header("📋 Live Session Completed — Export Center")
+        s = st.session_state["completed_live_summary"]
+
+        m1, m2, m3, m4, m5, m6 = st.columns(6)
+        m1.metric("Tracked Duration", s["session_duration_formatted"])
+        m2.metric("Frames Analyzed", s["total_frames"])
+        m3.metric("Avg FPS", f"{round(s['avg_fps'], 1)}")
+        m4.metric("Mean Trunk Flexion", f"{round(s['avg_trunk_angle'], 1)}°")
+        m5.metric("Peak REBA Score", f"Score {s['peak_reba_score']}")
+        m6.metric("ISO 11226 Status", "VIOLATION" if s["iso_11226_violation"] else "Compliant", delta_color="inverse" if s["iso_11226_violation"] else "normal")
+
+        # Download Buttons Row
+        dl1, dl2, dl3 = st.columns(3)
+        with dl1:
+            df_export = st.session_state.get("completed_live_df", pd.DataFrame())
+            if not df_export.empty:
+                csv_data = df_export.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    "📥 Download Session Data (CSV)",
+                    data=csv_data,
+                    file_name=f"agriergo_live_session_{int(time.time())}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                )
+        with dl2:
+            pdf_data = st.session_state.get("completed_live_pdf", None)
+            if pdf_data is not None:
+                st.download_button(
+                    "📄 Download Assessment Report (PDF)",
+                    data=pdf_data,
+                    file_name=f"agriergo_live_assessment_{int(time.time())}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                )
+        with dl3:
+            vid_path = st.session_state.get("completed_live_video", None)
+            if vid_path and Path(vid_path).exists():
+                with open(vid_path, "rb") as f_vid:
+                    vid_bytes = f_vid.read()
+                st.download_button(
+                    "🎬 Download Recorded Video (MP4)",
+                    data=vid_bytes,
+                    file_name=Path(vid_path).name,
+                    mime="video/mp4",
+                    use_container_width=True,
+                )
+
+        # Telemetry Data Preview Expander
+        df_preview = st.session_state.get("completed_live_df", pd.DataFrame())
+        if not df_preview.empty:
+            with st.expander("🔍 View Live Telemetry Time-Series Preview (First 20 Frames)"):
+                st.dataframe(df_preview.head(20), use_container_width=True)
 
 
 # ==============================================================================
