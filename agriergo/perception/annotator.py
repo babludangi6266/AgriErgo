@@ -181,6 +181,38 @@ class VideoAnnotator:
                     1
                 )
 
+            # Neck Flexion angle callout
+            neck_ang = angles.neck_flexion
+            if conf[0] > 0.3 and neck_ang is not None:
+                npt = (int(kp[0][0]), int(kp[0][1]))
+                n_color = (0, 0, 255) if neck_ang > 45.0 else ((0, 215, 255) if neck_ang > 20.0 else (0, 220, 0))
+                neck_tag = f"Neck: {round(neck_ang, 0)} deg"
+                cv2.putText(
+                    annotated,
+                    neck_tag,
+                    (npt[0] - 40, npt[1] - 12),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.38,
+                    n_color,
+                    1
+                )
+
+            # Hip angle callout
+            hip_ang = angles.avg_hip_angle or angles.left_hip_angle or angles.right_hip_angle
+            if (conf[11] > 0.3 or conf[12] > 0.3) and hip_ang is not None:
+                hip_pt = kp[11] if conf[11] > 0.3 else kp[12]
+                hpt = (int(hip_pt[0]), int(hip_pt[1]))
+                hip_tag = f"Hip: {round(hip_ang, 0)} deg"
+                cv2.putText(
+                    annotated,
+                    hip_tag,
+                    (hpt[0] - 65, hpt[1] + 5),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.36,
+                    (220, 220, 220),
+                    1
+                )
+
             # 4. Draw Bounding Box & HUD Label Badge
             if person.bbox is not None and len(person.bbox) == 4:
                 x1, y1, x2, y2 = [int(v) for v in person.bbox]
@@ -206,3 +238,100 @@ class VideoAnnotator:
                 )
 
         return annotated
+
+    @staticmethod
+    def draw_realtime_hud(
+        frame: np.ndarray,
+        telemetry: dict,
+        fps: Optional[float] = None,
+        alerts: Optional[List[str]] = None,
+    ) -> np.ndarray:
+        """
+        Draw a high-visibility real-time biomechanical HUD overlay card on the frame.
+
+        Args:
+            frame: Input BGR frame.
+            telemetry: Dict with keys: 'posture', 'trunk_angle', 'shoulder_angle',
+                       'knee_angle', 'hip_angle', 'neck_angle', 'elbow_angle',
+                       'reba_score', 'risk_level'.
+            fps: Current real-time FPS.
+            alerts: List of active hazard alert strings.
+
+        Returns:
+            Frame with rendered glassmorphic HUD.
+        """
+        h, w = frame.shape[:2]
+        hud = frame.copy()
+
+        # HUD Dimensions
+        hud_w = min(360, int(w * 0.45))
+        hud_h = 240
+        x_start = w - hud_w - 15
+        y_start = 15
+
+        # Draw semi-transparent dark HUD backdrop
+        overlay = hud.copy()
+        cv2.rectangle(overlay, (x_start, y_start), (x_start + hud_w, y_start + hud_h), (15, 20, 25), -1)
+        cv2.addWeighted(overlay, 0.78, hud, 0.22, 0, hud)
+        cv2.rectangle(hud, (x_start, y_start), (x_start + hud_w, y_start + hud_h), (50, 60, 70), 1)
+
+        # Header Title
+        title = "AGRIERGO REAL-TIME HUD"
+        fps_str = f"FPS: {round(fps, 1)}" if fps is not None else "LIVE"
+        cv2.putText(hud, title, (x_start + 12, y_start + 24), cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 225, 255), 2)
+        cv2.putText(hud, fps_str, (x_start + hud_w - 85, y_start + 24), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 190, 200), 1)
+        cv2.line(hud, (x_start + 10, y_start + 32), (x_start + hud_w - 10, y_start + 32), (60, 70, 85), 1)
+
+        # Posture Status Banner
+        posture = telemetry.get("posture", "Unknown")
+        posture_str = posture.value.upper() if hasattr(posture, 'value') else str(posture).upper()
+        risk = telemetry.get("risk_level", "Safe")
+        
+        # Color based on posture risk
+        if "BEND" in posture_str or "HIGH" in risk.upper() or "VERY" in risk.upper():
+            p_color = (0, 0, 255)       # Red
+        elif "SQUAT" in posture_str or "MED" in risk.upper() or "WARN" in risk.upper():
+            p_color = (0, 215, 255)     # Yellow
+        else:
+            p_color = (0, 220, 0)       # Green
+
+        cv2.rectangle(hud, (x_start + 12, y_start + 40), (x_start + hud_w - 12, y_start + 65), p_color, -1)
+        p_text = f"POSTURE: {posture_str}"
+        cv2.putText(hud, p_text, (x_start + 20, y_start + 58), cv2.FONT_HERSHEY_SIMPLEX, 0.50, (255, 255, 255), 2)
+
+        # Angle Telemetry Rows
+        trunk = telemetry.get("trunk_angle")
+        shoulder = telemetry.get("shoulder_angle")
+        knee = telemetry.get("knee_angle")
+        neck = telemetry.get("neck_angle")
+        hip = telemetry.get("hip_angle")
+        elbow = telemetry.get("elbow_angle")
+        reba = telemetry.get("reba_score", 1)
+
+        rows = [
+            ("Trunk Flexion:", f"{round(trunk, 1)} deg" if trunk is not None else "--",
+             (0, 0, 255) if (trunk and trunk > 60) else ((0, 215, 255) if (trunk and trunk > 20) else (0, 220, 0))),
+            ("Shoulder Elev:", f"{round(shoulder, 1)} deg" if shoulder is not None else "--",
+             (0, 0, 255) if (shoulder and shoulder > 90) else ((0, 215, 255) if (shoulder and shoulder > 45) else (200, 220, 240))),
+            ("Knee Flexion:", f"{round(knee, 1)} deg" if knee is not None else "--",
+             (0, 215, 255) if (knee and knee < 100) else (200, 220, 240)),
+            ("Neck Flexion:", f"{round(neck, 1)} deg" if neck is not None else "--",
+             (0, 0, 255) if (neck and neck > 40) else (200, 220, 240)),
+            ("Hip Angle:", f"{round(hip, 1)} deg" if hip is not None else "--", (200, 220, 240)),
+            ("REBA / Risk:", f"Score {reba} ({risk})", p_color),
+        ]
+
+        y_offset = y_start + 85
+        for label, val, val_col in rows:
+            cv2.putText(hud, label, (x_start + 14, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (170, 180, 195), 1)
+            cv2.putText(hud, val, (x_start + hud_w - 150, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.40, val_col, 1)
+            y_offset += 22
+
+        # Alert Banner at bottom of HUD if any active alerts
+        if alerts and len(alerts) > 0:
+            top_alert = alerts[0][:38]
+            alert_bar_y = y_start + hud_h + 8
+            cv2.rectangle(hud, (x_start, alert_bar_y), (x_start + hud_w, alert_bar_y + 28), (0, 0, 180), -1)
+            cv2.putText(hud, f"! {top_alert}", (x_start + 8, alert_bar_y + 19), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 255), 1)
+
+        return hud
