@@ -51,6 +51,20 @@ GEMINI_MAX_OUTPUT_TOKENS = 2048            # Max response tokens from Gemini
 AI_ANALYSIS_ENABLED_DEFAULT = True         # Enable AI analysis by default if API key is set
 GEMINI_API_KEY_ENV = "GEMINI_API_KEY"      # Environment variable name for API key
 
+# ──────────────────────────────────────────────
+# Real-Time Body Angle & Posture Tracking Config
+# ──────────────────────────────────────────────
+REALTIME_CAMERA_DEFAULT = 0                # Default webcam device index
+REALTIME_IMGSZ = 320                       # Image size for real-time inference (320px for high FPS)
+REALTIME_SMOOTHING_ALPHA = 0.65            # Exponential moving average factor for joint angles (0-1)
+REALTIME_CONFIDENCE = 0.35                 # Pose keypoint detection confidence threshold
+REALTIME_ALERT_TRUNK_SEVERE = 60.0         # Severe stooping threshold (ISO 11226)
+REALTIME_ALERT_TRUNK_BENDING = 30.0        # Forward trunk flexion threshold
+REALTIME_ALERT_SHOULDER_OVERHEAD = 90.0    # Overhead arm work hazard threshold
+REALTIME_ALERT_SHOULDER_ELEVATED = 45.0    # Elevated arm ergonomic threshold
+REALTIME_ALERT_NECK_STRAIN = 25.0          # Cervical neck flexion threshold
+REALTIME_ALERT_KNEE_SQUAT = 90.0           # Deep squatting knee angle threshold
+
 
 def get_adaptive_fps(duration_seconds: float, speed_mode: str = "Balanced Fast") -> float:
     """

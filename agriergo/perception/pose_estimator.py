@@ -75,3 +75,58 @@ class PoseEstimator:
                 ))
 
         return persons
+
+    def track(
+        self,
+        frame: np.ndarray,
+        tracker: str = "bytetrack.yaml",
+        imgsz: int = FAST_YOLO_IMGSZ,
+    ) -> List[PersonKeypoints]:
+        """
+        Run pose estimation and persistent tracking on a single frame.
+
+        Args:
+            frame: BGR image array (H, W, 3).
+            tracker: Tracker config name ("bytetrack.yaml" or "botsort.yaml").
+            imgsz: Inference image size.
+
+        Returns:
+            List of PersonKeypoints with persistent person_id assigned.
+        """
+        try:
+            results = self.model.track(
+                frame,
+                persist=True,
+                verbose=False,
+                conf=self.confidence,
+                imgsz=imgsz,
+                tracker=tracker,
+            )
+        except Exception:
+            return self.estimate(frame)
+
+        persons = []
+        for result in results:
+            if result.keypoints is None or len(result.keypoints) == 0:
+                continue
+
+            keypoints_xy = result.keypoints.xy.cpu().numpy()
+            keypoints_conf = result.keypoints.conf.cpu().numpy()
+            boxes = result.boxes.xyxy.cpu().numpy()
+            box_confs = result.boxes.conf.cpu().numpy()
+
+            track_ids = None
+            if result.boxes.id is not None:
+                track_ids = result.boxes.id.int().cpu().numpy()
+
+            for i in range(len(keypoints_xy)):
+                pid = int(track_ids[i]) if track_ids is not None and i < len(track_ids) else None
+                persons.append(PersonKeypoints(
+                    person_id=pid,
+                    keypoints=keypoints_xy[i],
+                    confidences=keypoints_conf[i],
+                    bbox=boxes[i],
+                    bbox_confidence=float(box_confs[i]),
+                ))
+
+        return persons
