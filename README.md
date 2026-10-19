@@ -89,7 +89,7 @@ AgriErgo combines state-of-the-art multimodal generative AI, deep learning compu
   - Hourly Load Events & Field Trips
   - 1-Hour Standardized Work-to-Rest Ratio
 
-### 3. 📐 Geometric Posture & Action Classification
+### 4. 📐 Geometric Posture & Action Classification
 Accurately categorizes human biomechanical states into **7 primary agricultural actions** using calibrated joint angle rules:
 - **Standing**: Hip, knee, and ankle align near vertical ($\theta_{\text{knee}} \ge 160^\circ$, $\theta_{\text{hip}} \ge 150^\circ$).
 - **Sitting**: Bent hips & knees with low ankle elevation ($\theta_{\text{hip}} < 110^\circ$, $\theta_{\text{knee}} < 120^\circ$, pelvis lowered).
@@ -99,7 +99,7 @@ Accurately categorizes human biomechanical states into **7 primary agricultural 
 - **Load Carrying**: Spatio-temporal IoU intersection between worker bounding box and carried objects (crates, bags, backpacks).
 - **Work Bouts & Rest Periods**: Automatic segmentation of continuous active bouts vs. idle micro-recovery periods.
 
-### 4. 💪 Arm Postural Study (Upper Limb Hazard Analysis)
+### 5. 💪 Arm Postural Study (Upper Limb Hazard Analysis)
 - **Shoulder Elevation Angle**: Computes upper arm abduction/flexion angle relative to trunk midline.
 - **Elbow Flexion Angle**: Computes interior angle between upper arm and forearm.
 - **Hazard Exposure Metrics**:
@@ -108,7 +108,7 @@ Accurately categorizes human biomechanical states into **7 primary agricultural 
   - Classified Arm Postural Risk (`Low`, `Moderate`, `High`, `Very High`)
 - **HUD Skeleton Overlays**: Real-time color-coded angle overlays directly rendered onto processed video.
 
-### 5. 📊 Continuous Agricultural Drudgery Index (ADI)
+### 6. 📊 Continuous Agricultural Drudgery Index (ADI)
 Evaluates composite farm labor strain across **5 scientific pillars** (0–100 score & percentage):
 1. **Postural Strain ($W_1 = 30\%$)**: Weighted composite of severe trunk bending, squatting, and static standing.
 2. **Repetitive Movement Strain ($W_2 = 25\%$)**: Scaled from movement frequency ($0\text{--}90\text{ CPM}$).
@@ -116,17 +116,17 @@ Evaluates composite farm labor strain across **5 scientific pillars** (0–100 s
 4. **Load & Tool Burden ($W_4 = 15\%$)**: Load carrying frequency and equipment handling weight.
 5. **Arm & Shoulder Strain ($W_5 = 10\%$)**: Shoulder elevation duration above $45^\circ$ and $90^\circ$.
 
-### 6. 📑 Validated Ergonomic & Biomechanical Standards
+### 7. 📑 Validated Ergonomic & Biomechanical Standards
 - **REBA (Rapid Entire Body Assessment)**: 1–15 body postural score.
 - **RULA (Rapid Upper Limb Assessment)**: 1–7 upper limb posture score.
 - **Revised NIOSH Lifting Equation**: Calculates Recommended Weight Limit (RWL), Lifting Index (LI), and **L5/S1 Lumbar Disc Compression Force ($N$)**.
 - **ISO 11226 Standard**: Evaluates static posture shift exposure limits against ergonomic threshold violations.
 
-### 7. 👥 Robust Multi-Worker Tracking & Tracklet Stitching
+### 8. 👥 Robust Multi-Worker Tracking & Tracklet Stitching
 - Employs **ByteTrack** and **BoT-SORT** for spatial-temporal multi-person tracking.
 - **Tracklet Stitcher**: Automatically stitches fragmented IDs caused by occlusions, field crops, or workers exiting and re-entering the camera frame using Hungarian bipartite graph matching.
 
-### 8. 🎬 Fault-Tolerant High-Resolution Video Decoder
+### 9. 🎬 Fault-Tolerant High-Resolution Video Decoder
 - Robust sequential stream grab sampling (`cap.grab()`) prevents HEVC (H.265), MPEG-TS, and 4K bitstream seek corruption (`PPS/POC errors`).
 - Adaptive frame subsampling maintains real-time throughput on long agricultural field recordings.
 
