@@ -121,6 +121,21 @@ class RealTimePostureTracker:
         self._current_posture: Dict[int, PostureLabel] = {}
         self._posture_streak_start: Dict[int, float] = {}
 
+        # Live Session Recording & Telemetry History
+        self._session_start_time: float = time.time()
+        self._session_records: List[Dict[str, Any]] = []
+
+        # Audio Hazard Alert Debouncing
+        self._last_audio_alert_time: float = 0.0
+        self._audio_alert_cooldown: float = 4.0  # Seconds between audible warnings
+
+        # Video Recording
+        self._video_writer: Optional[cv2.VideoWriter] = None
+        self._video_output_path: Optional[str] = None
+
+        # PDF Generator
+        self.pdf_generator = PDFReportGenerator()
+
         # FPS calculation
         self._last_frame_time: Optional[float] = None
         self._fps_history: deque = deque(maxlen=20)
@@ -128,11 +143,15 @@ class RealTimePostureTracker:
         self.frame_count: int = 0
 
     def reset(self):
-        """Reset internal history and counters."""
+        """Reset internal history, counters, and session records."""
         self._smoothed_angles.clear()
         self._posture_durations.clear()
         self._current_posture.clear()
         self._posture_streak_start.clear()
+        self._session_start_time = time.time()
+        self._session_records.clear()
+        self._last_audio_alert_time = 0.0
+        self.stop_video_recording()
         self._last_frame_time = None
         self._fps_history.clear()
         self.current_fps = 0.0
