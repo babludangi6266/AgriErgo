@@ -173,23 +173,33 @@ pip install -r requirements.txt
 export GEMINI_API_KEY="your-gemini-api-key"   # On Windows: set GEMINI_API_KEY="your-gemini-api-key"
 ```
 
-### 3. Launch Interactive Streamlit Dashboard
+### 3. Launch Standalone Real-Time Body Angle & Posture Tracker CLI
+```bash
+# Run real-time tracking on default webcam (Device 0)
+python run_realtime.py --camera 0
+
+# Run on external USB camera or RTSP stream
+python run_realtime.py --camera 1
+
+# Stream an existing field video in real time (simulated live camera)
+python run_realtime.py --video data/uploads/sample.mp4
+```
+
+### 4. Launch Interactive Streamlit Dashboard (Live & Batch Assessment)
 ```bash
 streamlit run dashboard/app.py
 ```
 Open **[http://localhost:8501](http://localhost:8501)** in your browser:
-1. Upload a field video (`.mp4`, `.mov`, `.avi`, `.mkv`).
-2. Select processing mode (**Lightning Fast**, **Balanced Fast**, or **High Precision Research**).
-3. Toggle **Enable AI Analysis** and provide your Gemini API key (or set it via `GEMINI_API_KEY` env var).
-4. View real-time KPIs, AI task narratives, 1-hour standardized matrices, arm postural risk gauges, 5-pillar ADI radar charts, and download publication-ready PDF reports with AI insights.
+1. Select **"📹 Real-Time Live Tracking"** to track live webcam or streaming video with live angle gauges, real-time strip chart, and instant ergonomic safety alerts.
+2. Or switch to **"📁 Video File Batch Analysis"** to upload field video files for full 1-hour standardized reporting and AI multimodal analysis.
 
-### 4. Launch FastAPI REST Backend
+### 5. Launch FastAPI REST Backend
 ```bash
 uvicorn api.main:app --reload --port 8000
 ```
 Interactive Swagger API documentation available at **[http://localhost:8000/docs](http://localhost:8000/docs)**.
 
-### 5. Run Unit & Integration Test Suite
+### 6. Run Unit & Integration Test Suite
 ```bash
 python -m pytest tests/ -v
 ```
@@ -199,22 +209,24 @@ python -m pytest tests/ -v
 ## 🏗️ System Architecture
 
 ```
-                                  Input Video File
-                                         │
-                                         ▼
+                       Live Camera Feed / Video Stream / Input File
+                                          │
+                                          ▼
    ┌───────────────────────────────────────────────────────────────────────────┐
    │ 1. PERCEPTION LAYER                                                       │
+   │    ├── RealTimePostureTracker (Low-Latency Live Stream Angle Engine)      │
    │    ├── VideoProcessor (Sequential Stream Sampling, HEVC/MPEG-TS Handler)  │
    │    ├── PoseEstimator (YOLOv8-Pose: 17 Keypoints @ Confidence > 0.3)       │
    │    ├── ObjectDetector (YOLOv8: Tools, Loads, Crates, Equipment)           │
    │    ├── ByteTrack / BoT-SORT (Persistent Multi-Person ID Association)      │
+   │    ├── VideoAnnotator (Skeleton Overlays, Joint Badges, Glassmorphic HUD) │
    │    └── TrackletStitcher (Spatial-Temporal Hungarian Identity Re-linking)   │
    └─────────────────────────────────────┬─────────────────────────────────────┘
                                          │
                                          ▼
    ┌───────────────────────────────────────────────────────────────────────────┐
    │ 2. INTERPRETATION LAYER                                                   │
-   │    ├── JointAngles (Trunk Flexion, Knee, Hip, Shoulder & Elbow Vectors)   │
+   │    ├── JointAngles (Trunk Flexion, Neck, Hip, Knee, Shoulder, Elbow)      │
    │    ├── PostureClassifier (7 Geometric Postures + Temporal Smoothing)      │
    │    ├── RepetitionDetector (SciPy FFT Peak Detection, CPM & Frequency)     │
    │    ├── ActivitySegmenter (Work Bouts vs. Rest & Recovery Segmentation)    │
@@ -246,7 +258,7 @@ python -m pytest tests/ -v
                                          ▼
    ┌───────────────────────────────────────────────────────────────────────────┐
    │ 4. PRESENTATION & EXPORT LAYER                                            │
-   │    ├── Streamlit Dashboard (Real-Time KPIs, AI Callouts & Radar Charts)   │
+   │    ├── Real-Time Dashboard (Live Angle Telemetry, Rolling Charts, Alerts) │
    │    ├── PDFGenerator (Publication-Ready PDF Reports with AI Insights)      │
    │    └── ReportGenerator (Structured JSON & CSV Export for Downstream ML)   │
    └───────────────────────────────────────────────────────────────────────────┘
@@ -282,6 +294,7 @@ AgriErgo/
 │   │   ├── annotator.py             # Skeleton & Joint HUD Video Overlays
 │   │   ├── object_detector.py       # Tool & Load Object Recognition
 │   │   ├── pose_estimator.py        # YOLOv8-Pose Multi-Person Estimator
+│   │   ├── realtime_tracker.py      # Real-Time Body Angle & Posture Tracker
 │   │   ├── tracklet_stitcher.py     # Spatial-Temporal ID Stitching
 │   │   └── video_processor.py       # Stream Grabber & Subsampling Engine
 │   ├── pipeline.py                  # End-to-End AgriErgo Orchestration Engine
@@ -292,7 +305,8 @@ AgriErgo/
 │   └── settings.py                  # Ergonomic Thresholds & System Constants
 ├── dashboard/
 │   └── app.py                       # Streamlit Interactive Web Application
-├── tests/                           # Comprehensive Pytest Suite (29 Tests)
+├── tests/                           # Comprehensive Pytest Suite
+├── run_realtime.py                  # Standalone Real-Time Tracking CLI
 ├── requirements.txt                 # Python Dependencies
 ├── implementation_plan.md           # Engineering & Architecture Blueprint
 └── README.md                        # Documentation & User Guide
