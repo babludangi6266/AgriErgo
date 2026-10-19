@@ -269,6 +269,27 @@ class RealTimePostureTracker:
             global_alerts.extend(worker_alerts)
 
             # 8. Assemble Worker Telemetry
+            # 8. Record telemetry to session history buffer
+            record = {
+                "timestamp": now,
+                "relative_time_seconds": round(now - self._session_start_time, 2),
+                "frame_idx": self.frame_count,
+                "worker_id": wid,
+                "posture": posture.value,
+                "trunk_angle_deg": round(trunk_val, 2),
+                "neck_angle_deg": round(neck_val, 2) if neck_val is not None else None,
+                "shoulder_angle_deg": round(sh_val, 2) if sh_val is not None else None,
+                "elbow_angle_deg": round(smoothed.get("elbow_angle", 0.0), 2) if smoothed.get("elbow_angle") is not None else None,
+                "knee_angle_deg": round(knee_val, 2) if knee_val is not None else None,
+                "hip_angle_deg": round(smoothed.get("hip_angle", 0.0), 2) if smoothed.get("hip_angle") is not None else None,
+                "reba_score": reba_obj.final_score,
+                "reba_risk_level": reba_obj.risk_level,
+                "is_severe_stoop": is_severe_stoop,
+                "is_arm_overhead": is_arm_overhead,
+                "is_arm_elevated": is_arm_elevated,
+            }
+            self._session_records.append(record)
+
             telem = WorkerLiveTelemetry(
                 worker_id=wid,
                 posture=posture,
@@ -325,6 +346,22 @@ class RealTimePostureTracker:
                 alerts=primary.alerts,
             )
 
+        # 11. Evaluate Audible Hazard Alert Trigger
+        audio_triggered = False
+        audio_msg = None
+        if primary is not None and (primary.is_severe_stoop or primary.is_arm_overhead):
+            if now - self._last_audio_alert_time >= self._audio_alert_cooldown:
+                self._last_audio_alert_time = now
+                audio_triggered = True
+                if primary.is_severe_stoop:
+                    audio_msg = f"Warning: Severe stooping posture ({round(primary.trunk_angle, 1)} degrees)! Straighten your trunk."
+                else:
+                    audio_msg = f"Warning: Overhead arm strain ({round(primary.shoulder_angle, 1)} degrees)! Lower your arms."
+
+        # 12. Write to MP4 video writer if recording active
+        if self._video_writer is not None:
+            self._video_writer.write(annotated)
+
         return RealTimeFrameResult(
             annotated_frame=annotated,
             fps=self.current_fps,
@@ -332,7 +369,185 @@ class RealTimePostureTracker:
             workers=workers_telemetry,
             primary_telemetry=primary,
             alerts=global_alerts,
+            audio_alert_triggered=audio_triggered,
+            audio_alert_message=audio_msg,
         )
+
+    def start_video_recording(
+        self,
+        output_path: Optional[str] = None,
+        fps: float = 20.0,
+        frame_size: Tuple[int, int] = (640, 480),
+    ) -> str:
+        """Initialize OpenCV VideoWriter to record the live annotated session."""
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        if output_path is None:
+            timestamp = int(time.time())
+            output_path = str(RESULTS_DIR / f"live_session_{timestamp}.mp4")
+
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        self._video_writer = cv2.VideoWriter(output_path, fourcc, fps, frame_size)
+        self._video_output_path = output_path
+        return output_path
+
+    def stop_video_recording(self) -> Optional[str]:
+        """Stop and close the active video writer."""
+        if self._video_writer is not None:
+            try:
+                self._video_writer.release()
+            except Exception:
+                pass
+            self._video_writer = None
+            path = self._video_output_path
+            self._video_output_path = None
+            return path
+        return None
+
+    def get_session_dataframe(self) -> pd.DataFrame:
+        """Return all recorded session telemetry records as a pandas DataFrame."""
+        if not self._session_records:
+            return pd.DataFrame()
+        return pd.DataFrame(self._session_records)
+
+    def export_session_csv(self, output_path: Optional[str] = None) -> str:
+        """Export session telemetry records to CSV."""
+        df = self.get_session_dataframe()
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        if output_path is None:
+            timestamp = int(time.time())
+            output_path = str(RESULTS_DIR / f"live_session_{timestamp}_telemetry.csv")
+
+        df.to_csv(output_path, index=False)
+        return output_path
+
+    def get_session_summary(self, source_desc: str = "Live Stream") -> Dict[str, Any]:
+        """
+        Compute aggregate summary statistics from the live tracking session.
+        """
+        df = self.get_session_dataframe()
+        total_time = max(1.0, time.time() - self._session_start_time)
+        hrs = int(total_time // 3600)
+        mins = int((total_time % 3600) // 60)
+        secs = int(total_time % 60)
+        time_formatted = f"{hrs:02d}:{mins:02d}:{secs:02d}"
+
+        if df.empty:
+            return {
+                "session_duration_seconds": total_time,
+                "session_duration_formatted": time_formatted,
+                "total_frames": self.frame_count,
+                "avg_fps": self.current_fps,
+                "source_desc": source_desc,
+                "posture_distribution": {},
+                "avg_trunk_angle": 0.0,
+                "max_trunk_angle": 0.0,
+                "severe_stoop_seconds": 0.0,
+                "severe_stoop_pct": 0.0,
+                "avg_shoulder_angle": 0.0,
+                "max_shoulder_angle": 0.0,
+                "overhead_arm_seconds": 0.0,
+                "overhead_arm_pct": 0.0,
+                "avg_knee_angle": 170.0,
+                "min_knee_angle": 170.0,
+                "squatting_seconds": 0.0,
+                "avg_neck_angle": 0.0,
+                "max_neck_angle": 0.0,
+                "neck_strain_seconds": 0.0,
+                "peak_reba_score": 1,
+                "dominant_risk_level": "Low",
+                "iso_11226_violation": False,
+                "recommendations": [
+                    "Maintain neutral upright trunk posture (<20° flexion).",
+                    "Avoid prolonged overhead reaching (>90° shoulder elevation).",
+                    "Take regular micro-breaks during manual field cultivation.",
+                ],
+            }
+
+        # Calculate durations from records
+        stoop_count = int(df["is_severe_stoop"].sum())
+        overhead_count = int(df["is_arm_overhead"].sum())
+        total_records = max(1, len(df))
+
+        severe_stoop_pct = (stoop_count / total_records) * 100.0
+        overhead_arm_pct = (overhead_count / total_records) * 100.0
+        severe_stoop_seconds = (stoop_count / total_records) * total_time
+        overhead_arm_seconds = (overhead_count / total_records) * total_time
+
+        # Posture distribution
+        p_counts = df["posture"].value_counts()
+        posture_dist = {}
+        for p_name, count in p_counts.items():
+            pct = (count / total_records) * 100.0
+            dur_s = (count / total_records) * total_time
+            posture_dist[p_name] = {
+                "duration_seconds": round(dur_s, 1),
+                "percentage": round(pct, 1),
+            }
+
+        squat_dur = posture_dist.get("squatting", {}).get("duration_seconds", 0.0)
+
+        # Joint angle averages & peaks
+        avg_trunk = float(df["trunk_angle_deg"].mean())
+        max_trunk = float(df["trunk_angle_deg"].max())
+        avg_sh = float(df["shoulder_angle_deg"].dropna().mean()) if "shoulder_angle_deg" in df else 0.0
+        max_sh = float(df["shoulder_angle_deg"].dropna().max()) if "shoulder_angle_deg" in df else 0.0
+        avg_kn = float(df["knee_angle_deg"].dropna().mean()) if "knee_angle_deg" in df else 170.0
+        min_kn = float(df["knee_angle_deg"].dropna().min()) if "knee_angle_deg" in df else 170.0
+        avg_nk = float(df["neck_angle_deg"].dropna().mean()) if "neck_angle_deg" in df else 0.0
+        max_nk = float(df["neck_angle_deg"].dropna().max()) if "neck_angle_deg" in df else 0.0
+
+        peak_reba = int(df["reba_score"].max())
+        risk_counts = df["reba_risk_level"].value_counts()
+        dominant_risk = str(risk_counts.index[0]) if not risk_counts.empty else "Low"
+
+        iso_violation = severe_stoop_seconds >= 60.0 or severe_stoop_pct >= 25.0
+
+        # Build prioritized actionable recommendations
+        recs = []
+        if severe_stoop_pct > 20.0 or max_trunk > 60.0:
+            recs.append("Severe stooping detected: Utilize long-handled cultivation tools or rolling field seats to reduce lumbar spine stress.")
+        if overhead_arm_pct > 15.0 or max_sh > 90.0:
+            recs.append("Overhead arm reach detected: Lower harvesting heights or rotate arm tasks to prevent rotator cuff impingement.")
+        if squat_dur > 60.0:
+            recs.append("Prolonged squatting: Provide padded knee support or mobile farm stools to relieve patellofemoral compressive force.")
+        recs.append("Schedule 2-minute micro-breaks every 20 minutes to restore joint mobility.")
+
+        return {
+            "session_duration_seconds": total_time,
+            "session_duration_formatted": time_formatted,
+            "total_frames": self.frame_count,
+            "avg_fps": float(np.mean(self._fps_history)) if self._fps_history else self.current_fps,
+            "source_desc": source_desc,
+            "posture_distribution": posture_dist,
+            "avg_trunk_angle": avg_trunk,
+            "max_trunk_angle": max_trunk,
+            "severe_stoop_seconds": severe_stoop_seconds,
+            "severe_stoop_pct": severe_stoop_pct,
+            "avg_shoulder_angle": avg_sh,
+            "max_shoulder_angle": max_sh,
+            "overhead_arm_seconds": overhead_arm_seconds,
+            "overhead_arm_pct": overhead_arm_pct,
+            "avg_knee_angle": avg_kn,
+            "min_knee_angle": min_kn,
+            "squatting_seconds": squat_dur,
+            "avg_neck_angle": avg_nk,
+            "max_neck_angle": max_nk,
+            "neck_strain_seconds": float((df["neck_angle_deg"].dropna() > 25).sum() / total_records * total_time) if "neck_angle_deg" in df else 0.0,
+            "peak_reba_score": peak_reba,
+            "dominant_risk_level": dominant_risk,
+            "iso_11226_violation": iso_violation,
+            "recommendations": recs,
+        }
+
+    def export_session_pdf(self, output_path: Optional[str] = None, source_desc: str = "Live Stream") -> bytes:
+        """Export session summary report to a publication-ready PDF."""
+        summary = self.get_session_summary(source_desc=source_desc)
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        if output_path is None:
+            timestamp = int(time.time())
+            output_path = str(RESULTS_DIR / f"live_session_{timestamp}_report.pdf")
+
+        return self.pdf_generator.generate_live_session_pdf(summary, output_path=output_path)
 
     def _smooth_angles(self, wid: int, raw: JointAngles) -> Dict[str, float]:
         """Apply Exponential Moving Average smoothing on joint angles."""
