@@ -41,6 +41,12 @@ from agriergo.perception.pose_estimator import PoseEstimator, PersonKeypoints
 from agriergo.perception.annotator import VideoAnnotator
 from agriergo.interpretation.joint_angles import compute_joint_angles, JointAngles
 from agriergo.interpretation.posture_classifier import PostureClassifier, PostureLabel
+from agriergo.interpretation.biomechanics_3d import (
+    Skeleton3D,
+    SpineStress3D,
+    compute_l5s1_spinal_compression,
+    lift_2d_to_3d_skeleton,
+)
 from agriergo.analytics.ergonomic_scorer import ErgonomicScorer, REBAScore
 from agriergo.analytics.pdf_generator import PDFReportGenerator
 
@@ -66,6 +72,13 @@ class WorkerLiveTelemetry:
     reba_score: int = 1
     reba_risk_level: str = "Negligible"
 
+    # 3D Biomechanics & L5/S1 Spinal Stress
+    l5s1_compression_n: float = 0.0
+    l5s1_shear_n: float = 0.0
+    l5s1_risk_level: str = "Safe"
+    spine_stress: Optional[SpineStress3D] = None
+    skeleton_3d: Optional[Skeleton3D] = None
+
     # Hazard flags
     is_severe_stoop: bool = False
     is_arm_overhead: bool = False
@@ -90,6 +103,7 @@ class RealTimeFrameResult:
     alerts: List[str]
     audio_alert_triggered: bool = False
     audio_alert_message: Optional[str] = None
+
 
 
 class RealTimePostureTracker:
