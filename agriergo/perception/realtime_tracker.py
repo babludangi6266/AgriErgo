@@ -529,6 +529,12 @@ class RealTimePostureTracker:
         avg_nk = float(df["neck_angle_deg"].dropna().mean()) if "neck_angle_deg" in df else 0.0
         max_nk = float(df["neck_angle_deg"].dropna().max()) if "neck_angle_deg" in df else 0.0
 
+        # L5/S1 Spinal Compression metrics
+        avg_l5s1 = float(df["l5s1_compression_n"].mean()) if "l5s1_compression_n" in df else 0.0
+        max_l5s1 = float(df["l5s1_compression_n"].max()) if "l5s1_compression_n" in df else 0.0
+        l5s1_exceeded_count = int((df["l5s1_compression_n"] >= 3400.0).sum()) if "l5s1_compression_n" in df else 0
+        l5s1_exceeded_pct = (l5s1_exceeded_count / total_records) * 100.0
+
         peak_reba = int(df["reba_score"].max())
         risk_counts = df["reba_risk_level"].value_counts()
         dominant_risk = str(risk_counts.index[0]) if not risk_counts.empty else "Low"
@@ -537,6 +543,8 @@ class RealTimePostureTracker:
 
         # Build prioritized actionable recommendations
         recs = []
+        if max_l5s1 >= 3400.0 or l5s1_exceeded_pct > 15.0:
+            recs.append("L5/S1 spinal load exceeded NIOSH 3400 N threshold: Integrate lumbar-assist exosuits or rolling plant stools to protect lumbar disc endplates.")
         if severe_stoop_pct > 20.0 or max_trunk > 60.0:
             recs.append("Severe stooping detected: Utilize long-handled cultivation tools or rolling field seats to reduce lumbar spine stress.")
         if overhead_arm_pct > 15.0 or max_sh > 90.0:
@@ -554,6 +562,9 @@ class RealTimePostureTracker:
             "posture_distribution": posture_dist,
             "avg_trunk_angle": avg_trunk,
             "max_trunk_angle": max_trunk,
+            "avg_l5s1_compression_n": avg_l5s1,
+            "max_l5s1_compression_n": max_l5s1,
+            "l5s1_action_limit_pct": l5s1_exceeded_pct,
             "severe_stoop_seconds": severe_stoop_seconds,
             "severe_stoop_pct": severe_stoop_pct,
             "avg_shoulder_angle": avg_sh,
@@ -571,6 +582,7 @@ class RealTimePostureTracker:
             "iso_11226_violation": iso_violation,
             "recommendations": recs,
         }
+
 
     def export_session_pdf(self, output_path: Optional[str] = None, source_desc: str = "Live Stream") -> bytes:
         """Export session summary report to a publication-ready PDF."""
