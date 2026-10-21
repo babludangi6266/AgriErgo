@@ -298,3 +298,13 @@ MAX_UPLOAD_SIZE_MB = 2000              # 2 GB max upload
 # ──────────────────────────────────────────────
 STREAMLIT_PAGE_TITLE = "AgriErgo — Farm Worker Ergonomics Assessment"
 STREAMLIT_PAGE_ICON = "🌾"
+
+# ──────────────────────────────────────────────
+# 3D Biomechanics & Spinal Compression Constants
+# ──────────────────────────────────────────────
+NIOSH_COMPRESSION_ACTION_LIMIT = 3400.0        # Newtons (Vertebral microfracture threshold)
+NIOSH_COMPRESSION_MAX_PERMISSIBLE = 6400.0     # Newtons (Acute spinal disc damage threshold)
+DEFAULT_WORKER_MASS_KG = 65.0                  # Anthropometric standard mass (kg)
+L5S1_ERECTOR_SPINAE_MOMENT_ARM = 0.05          # Moment arm of erector spinae muscle (m)
+TRUNK_CENTER_OF_MASS_RATIO = 0.60              # Upper body mass fraction (head, arms, trunk)
+TRUNK_COM_LENGTH_METERS = 0.25                 # Distance from L5/S1 disc to upper body COM (m)
