@@ -431,6 +431,18 @@ class PDFReportGenerator:
             Paragraph(f"{round(session_summary.get('neck_strain_seconds', 0.0), 1)}s &gt;25°", body_style),
         ])
 
+        # L5/S1 Lumbar Spinal Compression
+        l5_avg = session_summary.get('avg_l5s1_compression_n', 0.0)
+        l5_max = session_summary.get('max_l5s1_compression_n', 0.0)
+        l5_pct = session_summary.get('l5s1_action_limit_pct', 0.0)
+        ang_data.append([
+            Paragraph("<b>L5/S1 Lumbar Disc Compression</b>", body_style),
+            Paragraph(f"{round(l5_avg, 0):,.0f} N", body_style),
+            Paragraph(f"{round(l5_max, 0):,.0f} N", body_style),
+            Paragraph("NIOSH Limit: 3,400 N", body_style),
+            Paragraph(f"{round(l5_pct, 1)}% &gt;3400 N", body_style),
+        ])
+
         kin_table = Table(ang_data, colWidths=[150, 85, 85, 100, 100])
         kin_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#F1F5F9")),
