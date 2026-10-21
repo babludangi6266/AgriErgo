@@ -34,6 +34,11 @@ from config.settings import (
 from agriergo.pipeline import AgriErgoPipeline
 from agriergo.analytics.parameter_aggregator import WorkerReport
 from agriergo.perception.realtime_tracker import RealTimePostureTracker
+from agriergo.interpretation.biomechanics_3d import (
+    compute_l5s1_spinal_compression,
+    lift_2d_to_3d_skeleton,
+    generate_3d_skeleton_plotly_figure,
+)
 
 
 # ──────────────────────────────────────────────
@@ -161,13 +166,14 @@ if app_mode == "📹 Real-Time Live Tracking (Camera / Stream)":
         rt_imgsz = st.selectbox("Inference Resolution", [256, 320, 416], index=1, help="Lower resolution runs at higher FPS")
         show_hud = st.checkbox("Show Glassmorphic HUD Overlay", value=True)
         show_chart = st.checkbox("Show Real-Time Angle Strip Chart", value=True)
+        show_3d_skeleton = st.checkbox("🧬 Show Live 3D Biomechanical Skeleton", value=True, help="Renders interactive 3D rotatable skeleton with spine stress heatmap")
         enable_audio = st.checkbox("🔊 Enable Audible Hazard Alerts (Voice & Beep)", value=True, help="Plays audible warning tone & voice when severe stooping or overhead work is detected")
         record_video = st.checkbox("🔴 Record Live Video Session to MP4", value=False, help="Saves live annotated feed as an MP4 video file")
 
     # Control Action Buttons
     ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2.5, 1, 1])
     with ctrl_col1:
-        st.info("💡 **Ergonomic Standards**: Severe Stoop (>60° trunk flexion), Awkward Arm (>45° shoulder), Overhead Strain (>90°), Squat Stress (<90° knee).")
+        st.info("💡 **Ergonomic Standards**: Severe Stoop (>60° trunk flexion), Awkward Arm (>45° shoulder), Overhead Strain (>90°), L5/S1 Disc Hazard (>3400 N).")
     with ctrl_col2:
         start_btn = st.button("▶️ Start Live Tracking", type="primary", use_container_width=True)
     with ctrl_col3:
@@ -202,11 +208,12 @@ if app_mode == "📹 Real-Time Live Tracking (Camera / Stream)":
             else:
                 kpi_placeholder = st.empty()
                 audio_placeholder = st.empty()
-                left_col, right_col = st.columns([1.6, 1.0])
+                left_col, right_col = st.columns([1.5, 1.1])
                 with left_col:
                     video_placeholder = st.empty()
                     alert_placeholder = st.empty()
                 with right_col:
+                    skeleton_3d_placeholder = st.empty()
                     chart_placeholder = st.empty()
                     posture_breakdown_placeholder = st.empty()
 
@@ -244,9 +251,9 @@ if app_mode == "📹 Real-Time Live Tracking (Camera / Stream)":
 
                     primary = result.primary_telemetry
                     if primary is not None:
-                        # 1. Update Real-Time Metric Cards
+                        # 1. Update Real-Time Metric Cards (7 Columns)
                         with kpi_placeholder.container():
-                            k1, k2, k3, k4, k5, k6 = st.columns(6)
+                            k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
 
                             p_name = primary.posture.value.title()
                             if primary.is_severe_stoop:
@@ -273,6 +280,21 @@ if app_mode == "📹 Real-Time Live Tracking (Camera / Stream)":
                             k5.metric("Neck Flexion", f"{nk_deg}°")
 
                             k6.metric("Instant REBA", f"Score {primary.reba_score}", delta=primary.reba_risk_level, delta_color="inverse" if primary.reba_score > 7 else "normal")
+
+                            l5_comp = round(primary.l5s1_compression_n, 0)
+                            l5_delta = "Hazard (>6400N)" if l5_comp > 6400 else ("Action Limit" if l5_comp >= 3400 else "Safe")
+                            k7.metric("L5/S1 Spine Load", f"{l5_comp:,.0f} N", delta=l5_delta, delta_color="inverse" if l5_comp >= 3400 else "normal")
+
+                        # 1b. Render 3D Rotatable Biomechanical Skeleton
+                        if show_3d_skeleton and frame_idx % 2 == 0 and primary.skeleton_3d is not None:
+                            fig_3d = generate_3d_skeleton_plotly_figure(
+                                primary.skeleton_3d,
+                                spine_stress=primary.spine_stress,
+                                title=f"🧬 3D Skeleton & L5/S1 Load ({l5_comp:,.0f} N) — Worker #{primary.worker_id}",
+                                height=300,
+                            )
+                            if fig_3d is not None:
+                                skeleton_3d_placeholder.plotly_chart(fig_3d, use_container_width=True)
 
                         # 2. Update Active Alerts & Audible Warning
                         if primary.alerts:
@@ -372,13 +394,15 @@ if app_mode == "📹 Real-Time Live Tracking (Camera / Stream)":
         st.header("📋 Live Session Completed — Export Center")
         s = st.session_state["completed_live_summary"]
 
-        m1, m2, m3, m4, m5, m6 = st.columns(6)
+        m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
         m1.metric("Tracked Duration", s["session_duration_formatted"])
         m2.metric("Frames Analyzed", s["total_frames"])
         m3.metric("Avg FPS", f"{round(s['avg_fps'], 1)}")
         m4.metric("Mean Trunk Flexion", f"{round(s['avg_trunk_angle'], 1)}°")
         m5.metric("Peak REBA Score", f"Score {s['peak_reba_score']}")
-        m6.metric("ISO 11226 Status", "VIOLATION" if s["iso_11226_violation"] else "Compliant", delta_color="inverse" if s["iso_11226_violation"] else "normal")
+        m6.metric("Peak L5/S1 Load", f"{round(s.get('max_l5s1_compression_n', 0.0), 0):,.0f} N", delta=f"{round(s.get('l5s1_action_limit_pct', 0.0), 1)}% > 3400N")
+        m7.metric("ISO 11226 Status", "VIOLATION" if s["iso_11226_violation"] else "Compliant", delta_color="inverse" if s["iso_11226_violation"] else "normal")
+
 
         # Download Buttons Row
         dl1, dl2, dl3 = st.columns(3)
@@ -837,8 +861,177 @@ if "pipeline_result" in st.session_state:
             else:
                 st.info("Continuous angle timeline recorded across video playback.")
 
+        # ── SECTION 3b: 3D Biomechanical Skeleton & Lumbar Spine (L5/S1) Stress Heatmap ──
+        st.markdown("---")
+        st.markdown("### 🧬 3D Biomechanical Skeleton & Lumbar Spine (L5/S1) Stress Heatmap")
+        st.caption("Interactive 3D anatomical skeletal reconstruction with biomechanically validated spinal disc compression forces ($N$) and regional vertebral stress heatmap (NIOSH & Chaffin Biomechanical Model).")
+
+        # Compute L5/S1 spinal stress for average and peak postures
+        avg_spine_stress = compute_l5s1_spinal_compression(
+            trunk_flexion_deg=float(avg_flex or 0.0),
+            neck_flexion_deg=float(getattr(report.posture_summary, 'avg_neck_angle', 15.0) or 15.0) if report.posture_summary else 15.0,
+        )
+        peak_spine_stress = compute_l5s1_spinal_compression(
+            trunk_flexion_deg=float(max_flex or 0.0),
+            neck_flexion_deg=float(getattr(report.posture_summary, 'max_neck_angle', 25.0) or 25.0) if report.posture_summary else 25.0,
+        )
+
+        # 4 Metric Cards for Spinal Loading
+        sp_c1, sp_c2, sp_c3, sp_c4 = st.columns(4)
+        with sp_c1:
+            st.metric(
+                "⚡ Peak L5/S1 Compression",
+                f"{peak_spine_stress.l5s1_compression_n:,.0f} N",
+                delta="Exceeds NIOSH Limit!" if peak_spine_stress.l5s1_compression_n >= 3400 else "Sub-critical",
+                delta_color="inverse" if peak_spine_stress.l5s1_compression_n >= 3400 else "normal",
+                help="Peak axial compressive force on the L5/S1 lumbosacral disc during maximum forward stoop.",
+            )
+        with sp_c2:
+            st.metric(
+                "📏 Mean Spinal Compression",
+                f"{avg_spine_stress.l5s1_compression_n:,.0f} N",
+                delta=f"Ratio: {avg_spine_stress.action_limit_ratio:.2f}x NIOSH",
+                help="Average sustained spinal compression across total tracked activity.",
+            )
+        with sp_c3:
+            st.metric(
+                "📐 Peak Anterior Shear Force",
+                f"{peak_spine_stress.l5s1_shear_n:,.0f} N",
+                help="Shear force vector parallel to vertebral endplate.",
+            )
+        with sp_c4:
+            st.metric(
+                "🛡️ NIOSH Ergonomic Status",
+                peak_spine_stress.risk_level,
+                delta=peak_spine_stress.action_required[:25] + "...",
+                delta_color="inverse" if peak_spine_stress.l5s1_compression_n >= 3400 else "normal",
+            )
+
+        # Interactive 3D Pose View & Spinal Stress Gauges
+        sp_v1, sp_v2 = st.columns([1.3, 1.0])
+
+        with sp_v1:
+            pose_selection = st.radio(
+                "**Select Postural State for 3D Biomechanical View:**",
+                ["🔴 Peak Stoop / Bending Pose", "📏 Average Work Posture", "🟢 Upright Neutral Posture"],
+                horizontal=True,
+            )
+
+            if "Peak" in pose_selection:
+                sel_trunk = float(max_flex or 60.0)
+                sel_neck = float(getattr(report.posture_summary, 'max_neck_angle', 25.0) or 25.0) if report.posture_summary else 25.0
+                sel_knee = float(avg_knee or 160.0)
+                sel_stress = peak_spine_stress
+                sel_title = f"3D Skeleton — Peak Stoop ({sel_trunk:.1f}°) | L5/S1: {sel_stress.l5s1_compression_n:,.0f} N"
+            elif "Average" in pose_selection:
+                sel_trunk = float(avg_flex or 30.0)
+                sel_neck = float(getattr(report.posture_summary, 'avg_neck_angle', 15.0) or 15.0) if report.posture_summary else 15.0
+                sel_knee = float(avg_knee or 165.0)
+                sel_stress = avg_spine_stress
+                sel_title = f"3D Skeleton — Average Posture ({sel_trunk:.1f}°) | L5/S1: {sel_stress.l5s1_compression_n:,.0f} N"
+            else:
+                sel_trunk = 10.0
+                sel_neck = 5.0
+                sel_knee = 175.0
+                sel_stress = compute_l5s1_spinal_compression(10.0, neck_flexion_deg=5.0)
+                sel_title = f"3D Skeleton — Upright Neutral ({sel_trunk:.1f}°) | L5/S1: {sel_stress.l5s1_compression_n:,.0f} N"
+
+            # Lift synthetic or keypoint skeleton to 3D
+            skel_3d = lift_2d_to_3d_skeleton(
+                np.empty((0, 3)),
+                trunk_flexion_deg=sel_trunk,
+                neck_flexion_deg=sel_neck,
+                knee_angle_deg=sel_knee,
+            )
+            fig_3d = generate_3d_skeleton_plotly_figure(
+                skel_3d,
+                spine_stress=sel_stress,
+                title=sel_title,
+                height=380,
+            )
+            if fig_3d:
+                st.plotly_chart(fig_3d, use_container_width=True)
+
+        with sp_v2:
+            st.markdown("#### 🧭 L5/S1 Disc Compression Gauge")
+            fig_l5_gauge = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=float(sel_stress.l5s1_compression_n),
+                domain={'x': [0, 1], 'y': [0, 1]},
+                title={'text': "L5/S1 Spinal Load (Newtons)", 'font': {'size': 14}},
+                gauge={
+                    'axis': {'range': [0, 7000], 'tickwidth': 1, 'tickcolor': "white"},
+                    'bar': {'color': sel_stress.color_hex, 'thickness': 0.28},
+                    'bgcolor': "rgba(0,0,0,0)",
+                    'borderwidth': 2,
+                    'bordercolor': "#334155",
+                    'steps': [
+                        {'range': [0, 2000], 'color': "rgba(16, 185, 129, 0.35)"},      # Safe (<2000 N)
+                        {'range': [2000, 3400], 'color': "rgba(245, 158, 11, 0.4)"},     # Moderate (2000-3400 N)
+                        {'range': [3400, 6400], 'color': "rgba(239, 68, 68, 0.5)"},      # Action Limit (3400-6400 N)
+                        {'range': [6400, 7000], 'color': "rgba(139, 92, 246, 0.6)"},     # Hazardous (>6400 N)
+                    ],
+                    'threshold': {
+                        'line': {'color': "red", 'width': 4},
+                        'thickness': 0.75,
+                        'value': 3400.0,
+                    }
+                }
+            ))
+            fig_l5_gauge.update_layout(height=200, margin=dict(l=15, r=15, t=25, b=15), paper_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig_l5_gauge, use_container_width=True)
+
+            # Regional Vertebral Stress Breakdown Bar Chart
+            st.markdown("#### 🦴 Regional Vertebral Stress Breakdown")
+            spine_segments_df = pd.DataFrame([
+                {"Vertebral Region": "Cervical (C1–C7)", "Stress Index": sel_stress.cervical_stress, "Clinical Risk": "Neck Flexion"},
+                {"Vertebral Region": "Thoracic (T1–T12)", "Stress Index": sel_stress.thoracic_stress, "Clinical Risk": "Kyphotic Strain"},
+                {"Vertebral Region": "Lumbar (L1–L5)", "Stress Index": min(1.0, sel_stress.lumbar_stress), "Clinical Risk": "Disc Compression"},
+                {"Vertebral Region": "L5/S1 Lumbosacral", "Stress Index": min(1.0, sel_stress.action_limit_ratio), "Clinical Risk": "NIOSH Action Ratio"},
+            ])
+            fig_spine_bar = px.bar(
+                spine_segments_df,
+                x="Stress Index",
+                y="Vertebral Region",
+                orientation='h',
+                color="Stress Index",
+                color_continuous_scale=["#10B981", "#F59E0B", "#EF4444", "#8B5CF6"],
+                range_color=[0, 1.0],
+                height=170,
+            )
+            fig_spine_bar.update_layout(margin=dict(l=10, r=10, t=10, b=10), showlegend=False, coloraxis_showscale=False)
+            st.plotly_chart(fig_spine_bar, use_container_width=True)
+
+        # Continuous L5/S1 Spinal Compression Timeline
+        if angle_series:
+            st.markdown("#### 📈 Continuous L5/S1 Spinal Compression Curve (N) Over Time")
+            # Compute time-series compression from angle series
+            l5_times = []
+            l5_values = []
+            for item in angle_series:
+                t_val = item.get("timestamp", 0.0)
+                ang_val = item.get("trunk_flexion", 0.0)
+                sp = compute_l5s1_spinal_compression(ang_val)
+                l5_times.append(t_val)
+                l5_values.append(sp.l5s1_compression_n)
+
+            l5_df = pd.DataFrame({"Time (Seconds)": l5_times, "L5/S1 Compression (N)": l5_values})
+            fig_l5_curve = px.line(
+                l5_df,
+                x="Time (Seconds)",
+                y="L5/S1 Compression (N)",
+                color_discrete_sequence=["#EF4444"],
+            )
+            fig_l5_curve.add_hline(y=3400, line_dash="dash", line_color="#F59E0B", annotation_text="NIOSH Action Limit (3,400 N)")
+            fig_l5_curve.add_hline(y=6400, line_dash="dash", line_color="#8B5CF6", annotation_text="NIOSH Max Limit (6,400 N)")
+            fig_l5_curve.update_layout(height=260, margin=dict(l=20, r=20, t=30, b=20))
+            st.plotly_chart(fig_l5_curve, use_container_width=True)
+
+        st.markdown("---")
+
         # ── SECTION 4: 11 Parameters Display Table ──
         st.markdown("### 📋 The 11 Ergonomic & Drudgery Parameters")
+
         
         param_data = [
             {"#": "1", "Parameter": "Sitting Duration & Reps", "Extracted Value": f"{report.sitting_duration}s ({round(report.sitting_duration/max(1, report.total_tracked_time)*100, 1)}%) | Reps: {getattr(report, 'sitting_reps', 0)}"},
