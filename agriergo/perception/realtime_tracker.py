@@ -282,8 +282,19 @@ class RealTimePostureTracker:
 
             global_alerts.extend(worker_alerts)
 
-            # 8. Assemble Worker Telemetry
-            # 8. Record telemetry to session history buffer
+            # 8. Compute 3D Biomechanical Skeleton & Spinal Load (L5/S1)
+            spine_stress_obj = compute_l5s1_spinal_compression(
+                trunk_flexion_deg=trunk_val,
+                neck_flexion_deg=neck_val or 0.0,
+            )
+            skeleton_3d_obj = lift_2d_to_3d_skeleton(
+                keypoints=person.keypoints,
+                trunk_flexion_deg=trunk_val,
+                neck_flexion_deg=neck_val or 0.0,
+                knee_angle_deg=knee_val or 180.0,
+            )
+
+            # Record telemetry to session history buffer
             record = {
                 "timestamp": now,
                 "relative_time_seconds": round(now - self._session_start_time, 2),
@@ -298,6 +309,9 @@ class RealTimePostureTracker:
                 "hip_angle_deg": round(smoothed.get("hip_angle", 0.0), 2) if smoothed.get("hip_angle") is not None else None,
                 "reba_score": reba_obj.final_score,
                 "reba_risk_level": reba_obj.risk_level,
+                "l5s1_compression_n": spine_stress_obj.l5s1_compression_n,
+                "l5s1_shear_n": spine_stress_obj.l5s1_shear_n,
+                "l5s1_risk_level": spine_stress_obj.risk_level,
                 "is_severe_stoop": is_severe_stoop,
                 "is_arm_overhead": is_arm_overhead,
                 "is_arm_elevated": is_arm_elevated,
@@ -318,6 +332,11 @@ class RealTimePostureTracker:
                 raw_knee_angle=raw_angles.avg_knee_angle,
                 reba_score=reba_obj.final_score,
                 reba_risk_level=reba_obj.risk_level,
+                l5s1_compression_n=spine_stress_obj.l5s1_compression_n,
+                l5s1_shear_n=spine_stress_obj.l5s1_shear_n,
+                l5s1_risk_level=spine_stress_obj.risk_level,
+                spine_stress=spine_stress_obj,
+                skeleton_3d=skeleton_3d_obj,
                 is_severe_stoop=is_severe_stoop,
                 is_arm_overhead=is_arm_overhead,
                 is_arm_elevated=is_arm_elevated,
